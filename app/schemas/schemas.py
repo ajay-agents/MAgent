@@ -40,6 +40,11 @@ class GenerateEmailRequest(BaseModel):
 class GenerateEmailResponse(BaseModel):
     subject: str
     body: str
+    ai_model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
 
 
 # Scheduled email
@@ -53,5 +58,10 @@ class ScheduledEmailOut(BaseModel):
     scheduled_at: datetime | None
     sent_at: datetime | None
     created_at: datetime
+    ai_model: str | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    estimated_cost_usd: float | None
 
     model_config = {"from_attributes": True}

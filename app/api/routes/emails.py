@@ -53,8 +53,21 @@ def generate(
         subject=result["subject"],
         body=result["body"],
         status="draft",
+        ai_model=result["ai_model"],
+        prompt_tokens=result["prompt_tokens"],
+        completion_tokens=result["completion_tokens"],
+        total_tokens=result["total_tokens"],
+        estimated_cost_usd=result["estimated_cost_usd"],
     )
     db.add(draft)
     db.commit()
 
-    return GenerateEmailResponse(subject=result["subject"], body=result["body"])
+    return GenerateEmailResponse(
+        subject=result["subject"],
+        body=result["body"],
+        ai_model=result["ai_model"],
+        prompt_tokens=result["prompt_tokens"],
+        completion_tokens=result["completion_tokens"],
+        total_tokens=result["total_tokens"],
+        estimated_cost_usd=result["estimated_cost_usd"],
+    )
