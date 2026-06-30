@@ -1,0 +1,30 @@
+--- INSTRUCTION ---
+Write a job application email. The sender is applying for a role at the recipient's company.
+
+Your job:
+- Lead with the most relevant experience signal — not a career timeline, but the single strongest
+  credential that directly maps to what this company needs.
+- Show specific knowledge of the company: a product decision, a public direction, a piece of their work
+  that demonstrates real attention — not generic admiration.
+- Include measurable impact where possible (users reached, scale, outcome achieved).
+- Close with a clear, direct ask: an interview, a portfolio link, or a technical screen.
+
+Never write:
+- "I am writing to express my interest in the role of..."
+- "I've always admired your company" without specifics
+- A chronological career summary in paragraph form
+- Any generic opener that could be sent to any company
+
+--- EXAMPLE_USER ---
+Write a job application email.
+Tone: professional and polished, but not stiff.
+Length: 150–200 words.
+
+Sender: Alex Rivera
+Recipient: Karri Saarinen (karri@linear.app)
+Context: Applying for a senior product designer role. 5 years experience focused on developer tools. Led the design system used across 8 product teams at my last company. Obsessed with Linear's keyboard-first interface decisions, especially the v2 issues view redesign.
+
+Return only valid JSON with keys "subject" and "body".
+
+--- EXAMPLE_ASSISTANT ---
+{"subject": "Senior Product Designer — 5 years, design systems, developer tools", "body": "Hi Karri,\n\nThe issues view redesign you shipped in v2 — specifically the way keyboard navigation and filter composition work together — is the best interface decision I've seen in a developer tool in years. That's the kind of craft I've been building toward.\n\nQuick background: I'm a senior product designer with five years focused exclusively on developer tools. At my last company I built and owned the design system used across eight product teams. Before that I spent two years at a Series A devtools company leading the redesign of the core workflow from scratch, which shipped to 40k daily active developers.\n\nI'm looking for a place where the bar for craft is set that high. Portfolio is at alexrivera.design — happy to do a technical design review whenever works.\n\nAlex"}

@@ -1,0 +1,30 @@
+--- INSTRUCTION ---
+Write a thank-you email to express genuine appreciation.
+
+Your job:
+- Name exactly what is being appreciated — not "your help" or "your support",
+  but the specific thing the person did.
+- State the concrete impact: what changed, what was made possible, why it mattered.
+- Acknowledge what it cost the recipient — their time, their social capital, their effort.
+- If a reciprocity offer fits naturally, make it. If it doesn't, leave it out entirely.
+- End warmly and briefly. No ask, no business agenda bundled in.
+
+Never write:
+- "I just wanted to reach out and say thank you so much"
+- A long recap of the history before getting to the thanks
+- Hollow phrases like "I truly appreciate everything you've done"
+- Any ask or business item bundled into the thank-you
+
+--- EXAMPLE_USER ---
+Write a thank-you email.
+Tone: warm and personable.
+Length: under 100 words.
+
+Sender: Nina Patel
+Recipient: Ben Morrison (ben@bmorrison.com)
+Context: Ben introduced me to an investor named Anya. We had three weeks of runway left. That introduction turned into a term sheet in 11 days — she's leading our seed round.
+
+Return only valid JSON with keys "subject" and "body".
+
+--- EXAMPLE_ASSISTANT ---
+{"subject": "That introduction mattered more than you know", "body": "Hi Ben,\n\nI wanted to write this properly rather than send a Slack message.\n\nThe introduction to Anya came at exactly the right moment — we had three weeks of runway and were running out of warm paths to investors who understood developer infrastructure. That conversation turned into a term sheet in 11 days, and she's leading our seed round.\n\nYou didn't have to spend that capital on us. I didn't take it lightly.\n\nWhen there's someone in my network you'd want to know, the offer is open — just say the word.\n\nNina"}

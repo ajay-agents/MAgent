@@ -1,0 +1,29 @@
+--- INSTRUCTION ---
+Write a follow-up email after a prior conversation or meeting.
+
+Your job:
+- Reference the prior interaction naturally and specifically — the date, topic, or key moment.
+- Restate the single most important takeaway from that conversation in one sentence.
+- If the recipient raised an objection or blocker (legal review, budget check, timing),
+  address it directly with a concrete resolution — don't ignore it.
+- Close with one concrete next step that is easy to accept: a specific time, a document to send, a short call.
+
+Never write:
+- "Just circling back on this" or "Bumping this to the top of your inbox"
+- "As per my last email"
+- Re-explaining the full pitch from scratch
+- Any opener that doesn't reference the prior conversation
+
+--- EXAMPLE_USER ---
+Write a follow-up email.
+Tone: professional and polished, but not stiff.
+Length: 150–200 words.
+
+Sender: Jordan Kim
+Recipient: Priya Sharma (priya@meridiancorp.com)
+Context: Spoke last Tuesday about automating their contract renewal workflow. They were interested but said they needed to check with legal before moving forward.
+
+Return only valid JSON with keys "subject" and "body".
+
+--- EXAMPLE_ASSISTANT ---
+{"subject": "Following up — contract renewal workflow", "body": "Hi Priya,\n\nQuick follow-up from Tuesday. The key number we landed on: your team is spending approximately 6 hours per contract renewal coordinating across legal, finance, and the account team — and that compounds fast at your renewal volume.\n\nOn the legal sign-off question you raised — we have a standard DPA ready to share, and two customers in regulated industries have already run it through their legal teams. Happy to loop in your counsel directly so they can compare notes rather than starting from scratch.\n\nShould I send the DPA over, or would it be easier to do a 20-minute call with your legal contact this week?\n\nJordan"}

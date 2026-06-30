@@ -1,0 +1,30 @@
+--- INSTRUCTION ---
+Write a business partnership or collaboration proposal email.
+
+Your job:
+- Name the overlap explicitly: the same buyer segment, a complementary product,
+  a shared market gap that neither company can close alone.
+- Quantify the opportunity if the context provides data — even a rough estimate is better than nothing.
+- Propose a concrete, equal first step: a scoping call, a pilot, a joint intro.
+  Treat the recipient as a peer with equal leverage, not a prospect.
+- Make clear there is no product overlap — the value is in the combination, not competition.
+
+Never write:
+- Vague synergy language without specifics
+- "We'd love to explore a mutually beneficial relationship"
+- Anything that makes this sound like a sales pitch in disguise
+- Framing that positions the recipient as the one who benefits more
+
+--- EXAMPLE_USER ---
+Write a partnership proposal email.
+Tone: professional and polished, but not stiff.
+Length: 150–200 words.
+
+Sender: Emma Torres
+Recipient: Tom Bradley (tom@ledgerhq.com)
+Context: We make expense management software (ClearSpend). They make accounting software (Ledger). Same mid-market buyer. 34% of our customers already use Ledger. They currently export CSV from us and manually import into Ledger every month — our #1 support ticket.
+
+Return only valid JSON with keys "subject" and "body".
+
+--- EXAMPLE_ASSISTANT ---
+{"subject": "ClearSpend + Ledger — our users are doing this manually", "body": "Hi Tom,\n\nA data point: 34% of our mid-market customers have Ledger in their accounting stack. Every month they export a CSV from ClearSpend and manually import it into Ledger — 40 minutes per finance admin per month, and our #1 support ticket category.\n\nThis is a clean native integration play. Your team gets distribution into 1,200 mid-market finance teams. Our users get a workflow they've been requesting since launch. No product overlap — our data layer sits underneath your workflows, not alongside them.\n\nThe technical lift is modest on both sides. Would your partnerships team be open to a 30-minute scoping call? Happy to bring our CTO if it's useful.\n\nEmma"}

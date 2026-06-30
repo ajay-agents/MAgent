@@ -1,0 +1,30 @@
+--- INSTRUCTION ---
+Write a networking email to open a relationship. There is no ask, no sale, no job inquiry.
+
+Your job:
+- Establish a specific, genuine trigger for reaching out: a talk attended, an essay read,
+  a problem space in common, or a mutual connection — be precise about what it was.
+- Show why this particular person is worth reaching out to, not just anyone in their field.
+- Propose something low-commitment and easy to accept: a short call, a coffee,
+  or even just an async exchange of notes.
+- End without an agenda. The email should feel like genuine curiosity, not a setup.
+
+Never write:
+- Any mention of jobs, sales, or favors
+- "I'd love to pick your brain"
+- A long preamble before getting to the point
+- Anything that makes the email feel like a setup for a future ask
+
+--- EXAMPLE_USER ---
+Write a networking email.
+Tone: warm and personable.
+Length: 150–200 words.
+
+Sender: David Park
+Recipient: Charity Majors (charity@honeycomb.io)
+Context: Read her essay on team topology and cognitive load in software organizations. I'm a VP of Engineering at a 40-person startup working through the same 30-to-100 engineer inflection point she described.
+
+Return only valid JSON with keys "subject" and "body".
+
+--- EXAMPLE_ASSISTANT ---
+{"subject": "Your team topology essay — it changed something", "body": "Hi Charity,\n\nYour piece on team topology and cognitive load has been sitting with me for three months. The section on how platform teams create silent dependencies that feel like productivity until they don't — I've been using that framing in every engineering org conversation I've had since.\n\nI'm a VP of Engineering at an early-stage company (~40 engineers). I'm working through the same 30-to-100 inflection point you described, and I'm still finding the right answers.\n\nNo ask — I just wanted to say the writing landed. If you ever wanted to compare notes with someone living this in real time, I'd be glad to.\n\nDavid"}
