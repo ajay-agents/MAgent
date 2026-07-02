@@ -1,6 +1,9 @@
 import json
+import sys
 from pathlib import Path
 from openai import OpenAI
+from google import genai as google_genai
+from google.genai import types as genai_types
 
 from app.config import settings
 
@@ -46,12 +49,18 @@ def _load_prompt(purpose: str) -> dict:
 
     return _prompt_cache[purpose]
 
-client = OpenAI(api_key=settings.openai_api_key)
+
+_openai_client = OpenAI(api_key=settings.openai_api_key)
 
 # GPT-4o-mini pricing (USD per token)
 _MODEL = "gpt-4o-mini"
 _COST_PER_INPUT_TOKEN  = 0.150 / 1_000_000   # $0.150 per 1M input tokens
 _COST_PER_OUTPUT_TOKEN = 0.600 / 1_000_000   # $0.600 per 1M output tokens
+
+# Gemini 2.0 Flash pricing (USD per token)
+_GEMINI_MODEL = "gemini-2.0-flash"
+_GEMINI_COST_PER_INPUT_TOKEN  = 0.10 / 1_000_000   # $0.10 per 1M input tokens
+_GEMINI_COST_PER_OUTPUT_TOKEN = 0.40 / 1_000_000   # $0.40 per 1M output tokens
 
 
 def _calculate_cost(prompt_tokens: int, completion_tokens: int) -> float:
@@ -59,6 +68,7 @@ def _calculate_cost(prompt_tokens: int, completion_tokens: int) -> float:
         prompt_tokens * _COST_PER_INPUT_TOKEN + completion_tokens * _COST_PER_OUTPUT_TOKEN,
         8,
     )
+
 
 LENGTH_INSTRUCTIONS = {
     "short": "Length: under 100 words. Be punchy and direct — every sentence must earn its place.",
@@ -89,6 +99,44 @@ SYSTEM_PROMPT = (
 )
 
 
+def _generate_with_gemini(prompt: dict, user_prompt: str) -> dict:
+    client = google_genai.Client(api_key=settings.gemini_api_key)
+    # Inject the few-shot example via chat history
+    chat = client.chats.create(
+        model=_GEMINI_MODEL,
+        config=genai_types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.7,
+        ),
+        history=[
+            genai_types.Content(role="user",  parts=[genai_types.Part(text=prompt["example_user"])]),
+            genai_types.Content(role="model", parts=[genai_types.Part(text=prompt["example_assistant"])]),
+        ],
+    )
+    response = chat.send_message(user_prompt)
+
+    result = json.loads(response.text)
+    if "subject" not in result or "body" not in result:
+        raise ValueError("Gemini returned unexpected JSON structure")
+
+    usage = response.usage_metadata
+    prompt_tokens     = usage.prompt_token_count
+    completion_tokens = usage.candidates_token_count
+    total_tokens      = usage.total_token_count
+
+    result["ai_model"]           = _GEMINI_MODEL
+    result["prompt_tokens"]      = prompt_tokens
+    result["completion_tokens"]  = completion_tokens
+    result["total_tokens"]       = total_tokens
+    result["estimated_cost_usd"] = round(
+        prompt_tokens * _GEMINI_COST_PER_INPUT_TOKEN
+        + completion_tokens * _GEMINI_COST_PER_OUTPUT_TOKEN,
+        8,
+    )
+    return result
+
+
 def generate_email(
     purpose: str,
     tone: str,
@@ -99,7 +147,7 @@ def generate_email(
     context: str | None,
 ) -> dict:
     prompt = _load_prompt(purpose)
-    tone_instr = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
+    tone_instr   = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
     length_instr = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["medium"])
 
     user_prompt = (
@@ -112,28 +160,41 @@ def generate_email(
         + "\nReturn only valid JSON with keys \"subject\" and \"body\"."
     )
 
-    messages = [
-        {"role": "system",    "content": SYSTEM_PROMPT},
-        {"role": "user",      "content": prompt["example_user"]},
-        {"role": "assistant", "content": prompt["example_assistant"]},
-        {"role": "user",      "content": user_prompt},
-    ]
+    # --- Primary: OpenAI ---
+    try:
+        messages = [
+            {"role": "system",    "content": SYSTEM_PROMPT},
+            {"role": "user",      "content": prompt["example_user"]},
+            {"role": "assistant", "content": prompt["example_assistant"]},
+            {"role": "user",      "content": user_prompt},
+        ]
+        response = _openai_client.chat.completions.create(
+            model=_MODEL,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+        result = json.loads(response.choices[0].message.content)
+        if "subject" not in result or "body" not in result:
+            raise ValueError("OpenAI returned unexpected JSON structure")
 
-    response = client.chat.completions.create(
-        model=_MODEL,
-        messages=messages,
-        response_format={"type": "json_object"},
-        temperature=0.7,
-    )
+        usage = response.usage
+        result["ai_model"]           = _MODEL
+        result["prompt_tokens"]      = usage.prompt_tokens
+        result["completion_tokens"]  = usage.completion_tokens
+        result["total_tokens"]       = usage.total_tokens
+        result["estimated_cost_usd"] = _calculate_cost(usage.prompt_tokens, usage.completion_tokens)
+        return result
 
-    result = json.loads(response.choices[0].message.content)
-    if "subject" not in result or "body" not in result:
-        raise ValueError("OpenAI returned unexpected JSON structure")
+    except Exception as openai_error:
+        if not settings.gemini_api_key:
+            raise  # no fallback configured — surface the original error
 
-    usage = response.usage
-    result["ai_model"] = _MODEL
-    result["prompt_tokens"] = usage.prompt_tokens
-    result["completion_tokens"] = usage.completion_tokens
-    result["total_tokens"] = usage.total_tokens
-    result["estimated_cost_usd"] = _calculate_cost(usage.prompt_tokens, usage.completion_tokens)
-    return result
+        print(
+            f"[MailFlow] OpenAI failed ({type(openai_error).__name__}: {openai_error}), "
+            "falling back to Gemini...",
+            file=sys.stderr,
+        )
+
+    # --- Fallback: Gemini ---
+    return _generate_with_gemini(prompt, user_prompt)

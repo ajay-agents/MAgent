@@ -1,20 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.openai_client import generate_email
+from app.core.security import get_current_user_id
 from app.db.session import get_db
 from app.models.models import ScheduledEmail
-from app.schemas.schemas import GenerateEmailRequest, GenerateEmailResponse
-from app.core.security import get_current_user_id
-from app.core.openai_client import generate_email
+from app.schemas.schemas import (
+    EmailListItem,
+    GenerateEmailRequest,
+    GenerateEmailResponse,
+    ScheduleEmailRequest,
+    ScheduledEmailOut,
+)
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
 VALID_PURPOSES = {"cold_outreach", "follow_up", "job_application", "networking", "partnership", "thank_you"}
-VALID_TONES = {"professional", "friendly", "formal", "casual", "persuasive"}
-VALID_LENGTHS = {"short", "medium", "long"}
+VALID_TONES    = {"professional", "friendly", "formal", "casual", "persuasive"}
+VALID_LENGTHS  = {"short", "medium", "long"}
 
 
-@router.post("/generate", response_model=GenerateEmailResponse)
+# ── Generate & save as draft ──────────────────────────────────────────────────
+
+@router.post("/generate", response_model=GenerateEmailResponse, status_code=201)
 def generate(
     payload: GenerateEmailRequest,
     db: Session = Depends(get_db),
@@ -34,13 +42,12 @@ def generate(
             length=payload.length,
             sender_name=payload.sender_name,
             recipient_name=payload.recipient_name,
-            recipient_email=payload.recipient_email,
+            recipient_email=str(payload.recipient_email),
             context=payload.context,
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Email generation failed: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Email generation failed: {e}")
 
-    # Save as draft so it can be scheduled later
     draft = ScheduledEmail(
         user_id=user_id,
         purpose=payload.purpose,
@@ -48,7 +55,7 @@ def generate(
         length=payload.length,
         sender_name=payload.sender_name,
         recipient_name=payload.recipient_name,
-        recipient_email=payload.recipient_email,
+        recipient_email=str(payload.recipient_email),
         context=payload.context,
         subject=result["subject"],
         body=result["body"],
@@ -61,8 +68,10 @@ def generate(
     )
     db.add(draft)
     db.commit()
+    db.refresh(draft)
 
     return GenerateEmailResponse(
+        id=draft.id,
         subject=result["subject"],
         body=result["body"],
         ai_model=result["ai_model"],
@@ -71,3 +80,102 @@ def generate(
         total_tokens=result["total_tokens"],
         estimated_cost_usd=result["estimated_cost_usd"],
     )
+
+
+# ── List emails ───────────────────────────────────────────────────────────────
+
+@router.get("", response_model=list[EmailListItem])
+def list_emails(
+    status: str | None = Query(default=None, description="Filter by status: draft, pending, sent, failed"),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    q = db.query(ScheduledEmail).filter(ScheduledEmail.user_id == user_id)
+    if status:
+        q = q.filter(ScheduledEmail.status == status)
+    return q.order_by(ScheduledEmail.created_at.desc()).all()
+
+
+# ── Get single email ──────────────────────────────────────────────────────────
+
+@router.get("/{email_id}", response_model=ScheduledEmailOut)
+def get_email(
+    email_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    return email
+
+
+# ── Schedule a draft ──────────────────────────────────────────────────────────
+
+@router.post("/{email_id}/schedule", response_model=ScheduledEmailOut)
+def schedule_email(
+    email_id: int,
+    payload: ScheduleEmailRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    if email.status not in ("draft", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only draft or failed emails can be scheduled. Current status: {email.status}",
+        )
+    email.scheduled_at = payload.scheduled_at
+    email.status = "pending"
+    db.commit()
+    db.refresh(email)
+    return email
+
+
+# ── Cancel a scheduled email ──────────────────────────────────────────────────
+
+@router.delete("/{email_id}/schedule", response_model=ScheduledEmailOut)
+def cancel_schedule(
+    email_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    if email.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only pending emails can be unscheduled. Current status: {email.status}",
+        )
+    email.status = "draft"
+    email.scheduled_at = None
+    db.commit()
+    db.refresh(email)
+    return email
+
+
+# ── Delete a draft ────────────────────────────────────────────────────────────
+
+@router.delete("/{email_id}", status_code=204)
+def delete_email(
+    email_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    if email.status == "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Cancel the scheduled send first before deleting.",
+        )
+    db.delete(email)
+    db.commit()
+
+
+# ── Helper ────────────────────────────────────────────────────────────────────
+
+def _get_owned_email(email_id: int, user_id: int, db: Session) -> ScheduledEmail:
+    email = db.query(ScheduledEmail).filter(
+        ScheduledEmail.id == email_id,
+        ScheduledEmail.user_id == user_id,
+    ).first()
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return email

@@ -2,7 +2,8 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr
 
 
-# Auth
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -26,18 +27,34 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# Email generation
+# ── Mailbox credentials ───────────────────────────────────────────────────────
+
+class MailboxCredentialCreate(BaseModel):
+    gmail_address: EmailStr
+    app_password: str  # 16-char Gmail App Password (Spaces are stripped automatically)
+
+
+class MailboxCredentialOut(BaseModel):
+    gmail_address: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Email generation ──────────────────────────────────────────────────────────
+
 class GenerateEmailRequest(BaseModel):
-    purpose: str  # cold_outreach | follow_up | job_application | networking | partnership | thank_you
-    tone: str     # professional | friendly | formal | casual | persuasive
-    length: str   # short | medium | long
+    purpose: str       # cold_outreach | follow_up | job_application | networking | partnership | thank_you
+    tone: str          # professional | friendly | formal | casual | persuasive
+    length: str        # short | medium | long
     sender_name: str
     recipient_name: str
-    recipient_email: str
+    recipient_email: EmailStr
     context: str | None = None
 
 
 class GenerateEmailResponse(BaseModel):
+    id: int
     subject: str
     body: str
     ai_model: str
@@ -47,14 +64,23 @@ class GenerateEmailResponse(BaseModel):
     estimated_cost_usd: float
 
 
-# Scheduled email
+# ── Scheduled email ───────────────────────────────────────────────────────────
+
+class ScheduleEmailRequest(BaseModel):
+    scheduled_at: datetime  # UTC datetime when the email should be sent
+
+
 class ScheduledEmailOut(BaseModel):
     id: int
     purpose: str
+    tone: str
+    length: str
+    sender_name: str
+    recipient_name: str
+    recipient_email: str
     subject: str
     body: str
-    recipient_email: str
-    status: str
+    status: str                    # draft | pending | sent | failed
     scheduled_at: datetime | None
     sent_at: datetime | None
     created_at: datetime
@@ -62,6 +88,22 @@ class ScheduledEmailOut(BaseModel):
     prompt_tokens: int | None
     completion_tokens: int | None
     total_tokens: int | None
+    estimated_cost_usd: float | None
+
+    model_config = {"from_attributes": True}
+
+
+class EmailListItem(BaseModel):
+    id: int
+    purpose: str
+    subject: str
+    recipient_name: str
+    recipient_email: str
+    status: str
+    scheduled_at: datetime | None
+    sent_at: datetime | None
+    created_at: datetime
+    ai_model: str | None
     estimated_cost_usd: float | None
 
     model_config = {"from_attributes": True}
