@@ -137,6 +137,37 @@ def _generate_with_gemini(prompt: dict, user_prompt: str) -> dict:
     return result
 
 
+def _mock_response(purpose: str, tone: str, length: str, sender_name: str,
+                   recipient_name: str, recipient_email: str, context: str | None) -> dict:
+    """Return a realistic canned response for testing without a live API key."""
+    subjects = {
+        "cold_outreach": f"Quick question about {recipient_name}'s work",
+        "follow_up":     f"Following up on our conversation, {recipient_name}",
+        "networking":    f"Would love to connect, {recipient_name}",
+        "job_application": f"Application for the engineering role — {sender_name}",
+        "partnership":   f"Partnership idea between our teams",
+        "thank_you":     f"Thank you, {recipient_name}",
+    }
+    subject = subjects.get(purpose, f"Reaching out, {recipient_name}")
+    ctx_line = f"\n\nI noticed that {context}." if context else ""
+    body = (
+        f"Hi {recipient_name},{ctx_line}\n\n"
+        f"My name is {sender_name} and I wanted to reach out directly. "
+        f"I've been following your work and think there's a genuine opportunity for us to connect.\n\n"
+        f"I'd love to grab 20 minutes to explore whether there's a fit. Would any time this week work for you?\n\n"
+        f"Best,\n{sender_name}"
+    )
+    return {
+        "subject": subject,
+        "body": body,
+        "ai_model": "mock-test",
+        "prompt_tokens": 120,
+        "completion_tokens": 80,
+        "total_tokens": 200,
+        "estimated_cost_usd": 0.0,
+    }
+
+
 def generate_email(
     purpose: str,
     tone: str,
@@ -146,6 +177,11 @@ def generate_email(
     recipient_email: str,
     context: str | None,
 ) -> dict:
+    # Use mock when OpenAI key is a placeholder (for testing without live keys)
+    if settings.openai_api_key.startswith("sk-test"):
+        print("[MailFlow] Using mock response (placeholder OpenAI key detected)", file=sys.stderr)
+        return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
+
     prompt = _load_prompt(purpose)
     tone_instr   = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
     length_instr = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["medium"])

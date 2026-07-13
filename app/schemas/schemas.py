@@ -96,6 +96,9 @@ class ScheduledEmailOut(BaseModel):
 class EmailListItem(BaseModel):
     id: int
     purpose: str
+    tone: str
+    length: str
+    sender_name: str
     subject: str
     recipient_name: str
     recipient_email: str
