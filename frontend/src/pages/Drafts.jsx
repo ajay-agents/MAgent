@@ -3,7 +3,7 @@ import { useTheme } from "../context/ThemeContext";
 import { api } from "../services/api";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import { FiSearch, FiEye, FiTrash2, FiFileText, FiCalendar, FiX, FiCheckCircle } from "react-icons/fi";
+import { FiSearch, FiEye, FiTrash2, FiFileText, FiCalendar, FiX, FiCheckCircle, FiSend } from "react-icons/fi";
 
 const fmt = (iso) => iso ? new Date(iso).toLocaleString() : "";
 const purposeLabel = (s) => s?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "—";
@@ -16,6 +16,7 @@ export default function Drafts() {
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [notification, setNotification]   = useState("");
   const [loading, setLoading]         = useState(true);
+  const [sending, setSending]         = useState(null); // id of draft being sent
 
   const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(""), 3000); };
 
@@ -33,6 +34,19 @@ export default function Drafts() {
       notify("Draft deleted");
     } catch (err) {
       notify(err.message);
+    }
+  };
+
+  const sendDraft = async (draft) => {
+    setSending(draft.id);
+    try {
+      await api.post(`/api/emails/${draft.id}/send`, {});
+      setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+      notify("Email sent successfully!");
+    } catch (err) {
+      notify(err.message || "Send failed. Check your Gmail credentials in Settings.");
+    } finally {
+      setSending(null);
     }
   };
 
@@ -111,6 +125,10 @@ export default function Drafts() {
                   <button onClick={() => viewFull(draft)}
                     className={`px-5 py-3 rounded-xl border flex items-center gap-2 ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
                     <FiEye /> View
+                  </button>
+                  <button onClick={() => sendDraft(draft)} disabled={sending === draft.id}
+                    className={`px-5 py-3 rounded-xl text-white flex items-center gap-2 disabled:opacity-60 ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900 hover:bg-black"}`}>
+                    <FiSend /> {sending === draft.id ? "Sending..." : "Send Now"}
                   </button>
                   <button onClick={() => deleteDraft(draft.id)}
                     className="px-5 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white flex items-center gap-2">

@@ -1,10 +1,16 @@
+import sys
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.core.encryption import decrypt_password
 from app.core.openai_client import generate_email
 from app.core.security import get_current_user_id
+from app.core.smtp_sender import send_email
 from app.db.session import get_db
-from app.models.models import ScheduledEmail
+from app.models.models import MailboxCredential, ScheduledEmail
 from app.schemas.schemas import (
     EmailListItem,
     GenerateEmailRequest,
@@ -146,6 +152,50 @@ def cancel_schedule(
         )
     email.status = "draft"
     email.scheduled_at = None
+    db.commit()
+    db.refresh(email)
+    return email
+
+
+# ── Send immediately ──────────────────────────────────────────────────────────
+
+@router.post("/{email_id}/send", response_model=ScheduledEmailOut)
+def send_now(
+    email_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    if email.status == "sent":
+        raise HTTPException(status_code=400, detail="Email has already been sent.")
+    if email.status == "pending":
+        # Cancel the scheduled send and send immediately instead
+        email.scheduled_at = None
+
+    cred = db.query(MailboxCredential).filter(MailboxCredential.user_id == user_id).first()
+    if not cred:
+        raise HTTPException(
+            status_code=400,
+            detail="No Gmail account configured. Add your credentials in Settings first.",
+        )
+
+    try:
+        password = decrypt_password(cred.encrypted_app_password, settings.fernet_key)
+        send_email(
+            gmail_address=cred.gmail_address,
+            app_password=password,
+            to_email=email.recipient_email,
+            subject=email.subject,
+            body=email.body,
+        )
+    except Exception as exc:
+        email.status = "failed"
+        db.commit()
+        print(f"[Send] Failed id={email_id}: {exc}", file=sys.stderr)
+        raise HTTPException(status_code=502, detail=f"SMTP send failed: {exc}")
+
+    email.status = "sent"
+    email.sent_at = datetime.utcnow()
     db.commit()
     db.refresh(email)
     return email

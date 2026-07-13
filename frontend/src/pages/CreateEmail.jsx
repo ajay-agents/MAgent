@@ -85,14 +85,19 @@ export default function CreateEmail() {
     }
   };
 
+  const [sending, setSending] = useState(false);
+
   const sendNow = async () => {
     if (!generatedEmail) return;
-    const scheduledAt = new Date().toISOString();
+    setSending(true);
+    setError("");
     try {
-      await api.post(`/api/emails/${generatedEmail.id}/schedule`, { scheduled_at: scheduledAt });
-      notify("Email queued to send now");
+      await api.post(`/api/emails/${generatedEmail.id}/send`, {});
+      notify("Email sent successfully!");
     } catch (err) {
-      setError(err.message || "Send failed.");
+      setError(err.message || "Send failed. Check your Gmail credentials in Settings.");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -198,9 +203,9 @@ export default function CreateEmail() {
                     className={`px-4 py-2 rounded-xl border flex items-center gap-2 transition ${darkMode ? "border-gray-700 hover:bg-gray-800 text-white" : "border-gray-200 hover:bg-gray-100"}`}>
                     <FiCalendar /> Schedule
                   </button>
-                  <button onClick={sendNow} disabled={!generatedEmail}
+                  <button onClick={sendNow} disabled={!generatedEmail || sending}
                     className={`px-4 py-2 rounded-xl text-white flex gap-2 items-center disabled:opacity-50 ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900"}`}>
-                    <FiSend /> Send Now
+                    <FiSend /> {sending ? "Sending..." : "Send Now"}
                   </button>
                 </div>
               </div>
