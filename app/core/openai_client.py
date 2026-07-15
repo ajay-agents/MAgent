@@ -168,6 +168,21 @@ def _mock_response(purpose: str, tone: str, length: str, sender_name: str,
     }
 
 
+def _build_user_prompt(prompt: dict, tone: str, length: str, sender_name: str,
+                       recipient_name: str, recipient_email: str, context: str | None) -> str:
+    tone_instr   = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
+    length_instr = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["medium"])
+    return (
+        f"{prompt['instruction']}\n\n"
+        f"{tone_instr}\n"
+        f"{length_instr}\n\n"
+        f"Sender: {sender_name}\n"
+        f"Recipient: {recipient_name} ({recipient_email})\n"
+        + (f"Context: {context}\n" if context else "")
+        + "\nReturn only valid JSON with keys \"subject\" and \"body\"."
+    )
+
+
 def generate_email(
     purpose: str,
     tone: str,
@@ -177,24 +192,24 @@ def generate_email(
     recipient_email: str,
     context: str | None,
 ) -> dict:
-    # Use mock when OpenAI key is a placeholder (for testing without live keys)
-    if settings.openai_api_key.startswith("sk-test"):
-        print("[MailFlow] Using mock response (placeholder OpenAI key detected)", file=sys.stderr)
-        return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
-
     prompt = _load_prompt(purpose)
-    tone_instr   = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
-    length_instr = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["medium"])
-
-    user_prompt = (
-        f"{prompt['instruction']}\n\n"
-        f"{tone_instr}\n"
-        f"{length_instr}\n\n"
-        f"Sender: {sender_name}\n"
-        f"Recipient: {recipient_name} ({recipient_email})\n"
-        + (f"Context: {context}\n" if context else "")
-        + "\nReturn only valid JSON with keys \"subject\" and \"body\"."
+    user_prompt = _build_user_prompt(
+        prompt, tone, length, sender_name, recipient_name, recipient_email, context
     )
+
+    # When OpenAI key is a placeholder, go straight to Gemini if configured,
+    # otherwise fall back to the canned mock (local testing only).
+    if settings.openai_api_key.startswith("sk-test"):
+        if settings.gemini_api_key:
+            print("[MailFlow] OpenAI key is placeholder — using Gemini directly", file=sys.stderr)
+            try:
+                return _generate_with_gemini(prompt, user_prompt)
+            except Exception as gemini_err:
+                print(f"[MailFlow] Gemini failed ({gemini_err}), falling back to mock", file=sys.stderr)
+                return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
+        else:
+            print("[MailFlow] No API keys configured — using mock response", file=sys.stderr)
+            return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
 
     # --- Primary: OpenAI ---
     try:
