@@ -1,9 +1,17 @@
 import React from "react";
 import { FiSearch, FiBell, FiMoon, FiSun } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 const Navbar = () => {
   const { darkMode, toggleTheme } = useTheme();
+  const { user } = useAuth();
+
+  // Derive display name from email: "ajay.rajput@gmail.com" → "Ajay Rajput"
+  const displayName = user?.email
+    ? user.email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "User";
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <div
@@ -79,7 +87,7 @@ const Navbar = () => {
                 : "bg-gradient-to-br from-gray-900 to-gray-600"
             }`}
           >
-            R
+            {initial}
           </div>
 
           <div className="text-sm leading-tight">
@@ -88,10 +96,10 @@ const Navbar = () => {
                 darkMode ? "text-white" : "text-gray-800"
               }`}
             >
-              Riya
+              {displayName}
             </p>
 
-            <p className="text-gray-400 text-xs">Pro User</p>
+            <p className="text-gray-400 text-xs">{user?.email || ""}</p>
           </div>
         </div>
       </div>

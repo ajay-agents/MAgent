@@ -7,41 +7,10 @@ import { FiTrash2, FiRotateCcw, FiSearch, FiCheck } from "react-icons/fi";
 
 import { useTheme } from "../context/ThemeContext";
 
-const initialDeletedEmails = [
-  {
-    id: 1,
-    recipient: "john@startup.com",
-    subject: "Product update announcement",
-    deletedAt: "Today, 11:20 AM",
-    size: "12 KB",
-  },
-  {
-    id: 2,
-    recipient: "marketing@company.com",
-    subject: "Monthly newsletter",
-    deletedAt: "Yesterday, 4:30 PM",
-    size: "18 KB",
-  },
-  {
-    id: 3,
-    recipient: "alex@design.io",
-    subject: "Design collaboration",
-    deletedAt: "Jun 30, 1:15 PM",
-    size: "9 KB",
-  },
-  {
-    id: 4,
-    recipient: "support@testmail.com",
-    subject: "Support request",
-    deletedAt: "Jun 25, 9:40 AM",
-    size: "7 KB",
-  },
-];
-
 const DeletedEmails = () => {
   const { darkMode } = useTheme();
 
-  const [deletedEmails, setDeletedEmails] = useState(initialDeletedEmails);
+  const [deletedEmails, setDeletedEmails] = useState([]);
 
   const [search, setSearch] = useState("");
 
