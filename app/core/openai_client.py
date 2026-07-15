@@ -12,11 +12,6 @@ _prompt_cache: dict[str, dict] = {}
 
 
 def _load_prompt(purpose: str) -> dict:
-    """
-    Load and parse a purpose .txt file, cached after first read.
-    Returns a dict with keys: instruction, example_user, example_assistant.
-    File format uses --- SECTION --- delimiters.
-    """
     if purpose not in _prompt_cache:
         path = _PROMPTS_DIR / f"{purpose}.txt"
         if not path.exists():
@@ -40,8 +35,7 @@ def _load_prompt(purpose: str) -> dict:
         if current_key:
             sections[current_key] = "\n".join(current_lines).strip()
 
-        required = {"instruction", "example_user", "example_assistant"}
-        missing = required - sections.keys()
+        missing = {"instruction", "example_user", "example_assistant"} - sections.keys()
         if missing:
             raise ValueError(f"Prompt file for '{purpose}' is missing sections: {missing}")
 
@@ -50,38 +44,42 @@ def _load_prompt(purpose: str) -> dict:
     return _prompt_cache[purpose]
 
 
+# ── Clients ───────────────────────────────────────────────────────────────────
+
 _openai_client = OpenAI(api_key=settings.openai_api_key)
 
-# GPT-4o-mini pricing (USD per token)
-_MODEL = "gpt-4o-mini"
-_COST_PER_INPUT_TOKEN  = 0.150 / 1_000_000   # $0.150 per 1M input tokens
-_COST_PER_OUTPUT_TOKEN = 0.600 / 1_000_000   # $0.600 per 1M output tokens
+# Groq uses the OpenAI-compatible API — no extra package needed
+_groq_client = (
+    OpenAI(api_key=settings.groq_api_key, base_url="https://api.groq.com/openai/v1")
+    if settings.groq_api_key else None
+)
 
-# Gemini 2.0 Flash pricing (USD per token)
-_GEMINI_MODEL = "gemini-2.0-flash"
-_GEMINI_COST_PER_INPUT_TOKEN  = 0.10 / 1_000_000   # $0.10 per 1M input tokens
-_GEMINI_COST_PER_OUTPUT_TOKEN = 0.40 / 1_000_000   # $0.40 per 1M output tokens
+# ── Model identifiers & pricing ───────────────────────────────────────────────
 
+_OPENAI_MODEL = "gpt-4o-mini"
+_OPENAI_COST_IN  = 0.150 / 1_000_000
+_OPENAI_COST_OUT = 0.600 / 1_000_000
 
-def _calculate_cost(prompt_tokens: int, completion_tokens: int) -> float:
-    return round(
-        prompt_tokens * _COST_PER_INPUT_TOKEN + completion_tokens * _COST_PER_OUTPUT_TOKEN,
-        8,
-    )
+_GEMINI_MODEL    = "gemini-2.0-flash"
+_GEMINI_COST_IN  = 0.10 / 1_000_000
+_GEMINI_COST_OUT = 0.40 / 1_000_000
 
+_GROQ_MODEL = "llama-3.3-70b-versatile"   # free tier: 14,400 req/day, 6k tok/min
+
+# ── Prompt helpers ────────────────────────────────────────────────────────────
 
 LENGTH_INSTRUCTIONS = {
-    "short": "Length: under 100 words. Be punchy and direct — every sentence must earn its place.",
+    "short":  "Length: under 100 words. Be punchy and direct — every sentence must earn its place.",
     "medium": "Length: 150–200 words. Cover the key points without padding. Cut anything that doesn't move the email forward.",
-    "long": "Length: 250–350 words. Give enough detail to be compelling, but cut all filler. More words must mean more value.",
+    "long":   "Length: 250–350 words. Give enough detail to be compelling, but cut all filler. More words must mean more value.",
 }
 
 TONE_INSTRUCTIONS = {
     "professional": "Tone: professional and polished, but not stiff. Reads like a senior person who respects the recipient's time.",
-    "friendly": "Tone: warm and personable — reads like it came from a real human, not a template. Natural contractions, approachable sentences.",
-    "formal": "Tone: formal and respectful. Appropriate for C-suite executives, academic contacts, or high-stakes introductions.",
-    "casual": "Tone: conversational and relaxed — like messaging a smart colleague you already have rapport with.",
-    "persuasive": "Tone: confident and persuasive. Makes a compelling case through specificity and evidence, not pressure or hype.",
+    "friendly":     "Tone: warm and personable — reads like it came from a real human, not a template. Natural contractions, approachable sentences.",
+    "formal":       "Tone: formal and respectful. Appropriate for C-suite executives, academic contacts, or high-stakes introductions.",
+    "casual":       "Tone: conversational and relaxed — like messaging a smart colleague you already have rapport with.",
+    "persuasive":   "Tone: confident and persuasive. Makes a compelling case through specificity and evidence, not pressure or hype.",
 }
 
 SYSTEM_PROMPT = (
@@ -99,9 +97,53 @@ SYSTEM_PROMPT = (
 )
 
 
+def _build_user_prompt(prompt: dict, tone: str, length: str, sender_name: str,
+                       recipient_name: str, recipient_email: str, context: str | None) -> str:
+    return (
+        f"{prompt['instruction']}\n\n"
+        f"{TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS['professional'])}\n"
+        f"{LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS['medium'])}\n\n"
+        f"Sender: {sender_name}\n"
+        f"Recipient: {recipient_name} ({recipient_email})\n"
+        + (f"Context: {context}\n" if context else "")
+        + "\nReturn only valid JSON with keys \"subject\" and \"body\"."
+    )
+
+
+def _openai_messages(prompt: dict, user_prompt: str) -> list:
+    return [
+        {"role": "system",    "content": SYSTEM_PROMPT},
+        {"role": "user",      "content": prompt["example_user"]},
+        {"role": "assistant", "content": prompt["example_assistant"]},
+        {"role": "user",      "content": user_prompt},
+    ]
+
+
+# ── Provider functions ────────────────────────────────────────────────────────
+
+def _generate_with_openai(prompt: dict, user_prompt: str) -> dict:
+    response = _openai_client.chat.completions.create(
+        model=_OPENAI_MODEL,
+        messages=_openai_messages(prompt, user_prompt),
+        response_format={"type": "json_object"},
+        temperature=0.7,
+    )
+    result = json.loads(response.choices[0].message.content)
+    if "subject" not in result or "body" not in result:
+        raise ValueError("OpenAI returned unexpected JSON structure")
+    u = response.usage
+    result["ai_model"]           = _OPENAI_MODEL
+    result["prompt_tokens"]      = u.prompt_tokens
+    result["completion_tokens"]  = u.completion_tokens
+    result["total_tokens"]       = u.total_tokens
+    result["estimated_cost_usd"] = round(
+        u.prompt_tokens * _OPENAI_COST_IN + u.completion_tokens * _OPENAI_COST_OUT, 8
+    )
+    return result
+
+
 def _generate_with_gemini(prompt: dict, user_prompt: str) -> dict:
     client = google_genai.Client(api_key=settings.gemini_api_key)
-    # Inject the few-shot example via chat history
     chat = client.chats.create(
         model=_GEMINI_MODEL,
         config=genai_types.GenerateContentConfig(
@@ -115,40 +157,52 @@ def _generate_with_gemini(prompt: dict, user_prompt: str) -> dict:
         ],
     )
     response = chat.send_message(user_prompt)
-
     result = json.loads(response.text)
     if "subject" not in result or "body" not in result:
         raise ValueError("Gemini returned unexpected JSON structure")
-
-    usage = response.usage_metadata
-    prompt_tokens     = usage.prompt_token_count
-    completion_tokens = usage.candidates_token_count
-    total_tokens      = usage.total_token_count
-
+    u = response.usage_metadata
     result["ai_model"]           = _GEMINI_MODEL
-    result["prompt_tokens"]      = prompt_tokens
-    result["completion_tokens"]  = completion_tokens
-    result["total_tokens"]       = total_tokens
+    result["prompt_tokens"]      = u.prompt_token_count
+    result["completion_tokens"]  = u.candidates_token_count
+    result["total_tokens"]       = u.total_token_count
     result["estimated_cost_usd"] = round(
-        prompt_tokens * _GEMINI_COST_PER_INPUT_TOKEN
-        + completion_tokens * _GEMINI_COST_PER_OUTPUT_TOKEN,
-        8,
+        u.prompt_token_count * _GEMINI_COST_IN + u.candidates_token_count * _GEMINI_COST_OUT, 8
     )
+    return result
+
+
+def _generate_with_groq(prompt: dict, user_prompt: str) -> dict:
+    if not _groq_client:
+        raise RuntimeError("Groq API key not configured")
+    response = _groq_client.chat.completions.create(
+        model=_GROQ_MODEL,
+        messages=_openai_messages(prompt, user_prompt),
+        response_format={"type": "json_object"},
+        temperature=0.7,
+    )
+    result = json.loads(response.choices[0].message.content)
+    if "subject" not in result or "body" not in result:
+        raise ValueError("Groq returned unexpected JSON structure")
+    u = response.usage
+    result["ai_model"]           = _GROQ_MODEL
+    result["prompt_tokens"]      = u.prompt_tokens
+    result["completion_tokens"]  = u.completion_tokens
+    result["total_tokens"]       = u.total_tokens
+    result["estimated_cost_usd"] = 0.0  # free tier
     return result
 
 
 def _mock_response(purpose: str, tone: str, length: str, sender_name: str,
                    recipient_name: str, recipient_email: str, context: str | None) -> dict:
-    """Return a realistic canned response for testing without a live API key."""
     subjects = {
-        "cold_outreach": f"Quick question about {recipient_name}'s work",
-        "follow_up":     f"Following up on our conversation, {recipient_name}",
-        "networking":    f"Would love to connect, {recipient_name}",
+        "cold_outreach":   f"Quick question about {recipient_name}'s work",
+        "follow_up":       f"Following up on our conversation, {recipient_name}",
+        "networking":      f"Would love to connect, {recipient_name}",
         "job_application": f"Application for the engineering role — {sender_name}",
-        "partnership":   f"Partnership idea between our teams",
-        "thank_you":     f"Thank you, {recipient_name}",
+        "partnership":     f"Partnership idea between our teams",
+        "thank_you":       f"Thank you, {recipient_name}",
     }
-    subject = subjects.get(purpose, f"Reaching out, {recipient_name}")
+    subject  = subjects.get(purpose, f"Reaching out, {recipient_name}")
     ctx_line = f"\n\nI noticed that {context}." if context else ""
     body = (
         f"Hi {recipient_name},{ctx_line}\n\n"
@@ -157,95 +211,39 @@ def _mock_response(purpose: str, tone: str, length: str, sender_name: str,
         f"I'd love to grab 20 minutes to explore whether there's a fit. Would any time this week work for you?\n\n"
         f"Best,\n{sender_name}"
     )
-    return {
-        "subject": subject,
-        "body": body,
-        "ai_model": "mock-test",
-        "prompt_tokens": 120,
-        "completion_tokens": 80,
-        "total_tokens": 200,
-        "estimated_cost_usd": 0.0,
-    }
+    return {"subject": subject, "body": body, "ai_model": "mock-test",
+            "prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200,
+            "estimated_cost_usd": 0.0}
 
 
-def _build_user_prompt(prompt: dict, tone: str, length: str, sender_name: str,
-                       recipient_name: str, recipient_email: str, context: str | None) -> str:
-    tone_instr   = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["professional"])
-    length_instr = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["medium"])
-    return (
-        f"{prompt['instruction']}\n\n"
-        f"{tone_instr}\n"
-        f"{length_instr}\n\n"
-        f"Sender: {sender_name}\n"
-        f"Recipient: {recipient_name} ({recipient_email})\n"
-        + (f"Context: {context}\n" if context else "")
-        + "\nReturn only valid JSON with keys \"subject\" and \"body\"."
-    )
-
+# ── Public entry point ────────────────────────────────────────────────────────
 
 def generate_email(
-    purpose: str,
-    tone: str,
-    length: str,
-    sender_name: str,
-    recipient_name: str,
-    recipient_email: str,
+    purpose: str, tone: str, length: str,
+    sender_name: str, recipient_name: str, recipient_email: str,
     context: str | None,
 ) -> dict:
-    prompt = _load_prompt(purpose)
+    prompt      = _load_prompt(purpose)
     user_prompt = _build_user_prompt(
         prompt, tone, length, sender_name, recipient_name, recipient_email, context
     )
 
-    # When OpenAI key is a placeholder, go straight to Gemini if configured,
-    # otherwise fall back to the canned mock (local testing only).
-    if settings.openai_api_key.startswith("sk-test"):
-        if settings.gemini_api_key:
-            print("[MailFlow] OpenAI key is placeholder — using Gemini directly", file=sys.stderr)
-            try:
-                return _generate_with_gemini(prompt, user_prompt)
-            except Exception as gemini_err:
-                print(f"[MailFlow] Gemini failed ({gemini_err}), falling back to mock", file=sys.stderr)
-                return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
-        else:
-            print("[MailFlow] No API keys configured — using mock response", file=sys.stderr)
-            return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
+    # Build ordered provider list based on which keys are configured
+    providers = []
+    if not settings.openai_api_key.startswith("sk-test"):
+        providers.append(("OpenAI", lambda: _generate_with_openai(prompt, user_prompt)))
+    if settings.gemini_api_key:
+        providers.append(("Gemini", lambda: _generate_with_gemini(prompt, user_prompt)))
+    if settings.groq_api_key:
+        providers.append(("Groq",   lambda: _generate_with_groq(prompt, user_prompt)))
 
-    # --- Primary: OpenAI ---
-    try:
-        messages = [
-            {"role": "system",    "content": SYSTEM_PROMPT},
-            {"role": "user",      "content": prompt["example_user"]},
-            {"role": "assistant", "content": prompt["example_assistant"]},
-            {"role": "user",      "content": user_prompt},
-        ]
-        response = _openai_client.chat.completions.create(
-            model=_MODEL,
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
-        result = json.loads(response.choices[0].message.content)
-        if "subject" not in result or "body" not in result:
-            raise ValueError("OpenAI returned unexpected JSON structure")
+    for name, fn in providers:
+        try:
+            print(f"[MailFlow] Trying {name}...", file=sys.stderr)
+            return fn()
+        except Exception as exc:
+            print(f"[MailFlow] {name} failed ({type(exc).__name__}: {exc}), trying next...",
+                  file=sys.stderr)
 
-        usage = response.usage
-        result["ai_model"]           = _MODEL
-        result["prompt_tokens"]      = usage.prompt_tokens
-        result["completion_tokens"]  = usage.completion_tokens
-        result["total_tokens"]       = usage.total_tokens
-        result["estimated_cost_usd"] = _calculate_cost(usage.prompt_tokens, usage.completion_tokens)
-        return result
-
-    except Exception as openai_error:
-        if not settings.gemini_api_key:
-            raise  # no fallback configured — surface the original error
-
-        print(
-            f"[MailFlow] OpenAI failed ({type(openai_error).__name__}: {openai_error}), "
-            "falling back to Gemini...",
-            file=sys.stderr,
-        )
-
-    # --- Fallback: Gemini ---
-    return _generate_with_gemini(prompt, user_prompt)
+    print("[MailFlow] All providers failed or none configured — using mock response", file=sys.stderr)
+    return _mock_response(purpose, tone, length, sender_name, recipient_name, recipient_email, context)
