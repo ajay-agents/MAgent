@@ -43,6 +43,16 @@ export default function ScheduledEmails() {
     }
   };
 
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/api/emails/${id}`);
+      setEmailList((prev) => prev.filter((m) => m.id !== id));
+      notify("Email moved to trash");
+    } catch (err) {
+      notify(err.message);
+    }
+  };
+
   const handleReschedule = async () => {
     if (!selectedEmail || !scheduleData.date || !scheduleData.time) return;
     const scheduledAt = new Date(`${scheduleData.date}T${scheduleData.time}:00`).toISOString();
@@ -141,7 +151,7 @@ export default function ScheduledEmails() {
                             className={`w-9 h-9 rounded-lg border flex items-center justify-center ${darkMode ? "border-gray-700 hover:bg-gray-800" : "hover:bg-gray-100"}`}>
                             <FiCalendar />
                           </button>
-                          <button onClick={() => handleCancel(mail.id)}
+                          <button onClick={() => handleDelete(mail.id)}
                             className={`w-9 h-9 rounded-lg border text-red-500 flex items-center justify-center ${darkMode ? "border-gray-700 hover:bg-red-500/10" : "hover:bg-red-50"}`}>
                             <FiTrash2 />
                           </button>

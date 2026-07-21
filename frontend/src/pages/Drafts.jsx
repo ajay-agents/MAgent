@@ -31,7 +31,7 @@ export default function Drafts() {
     try {
       await api.delete(`/api/emails/${id}`);
       setDrafts((prev) => prev.filter((d) => d.id !== id));
-      notify("Draft deleted");
+      notify("Draft moved to trash");
     } catch (err) {
       notify(err.message);
     }

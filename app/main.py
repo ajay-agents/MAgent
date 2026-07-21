@@ -10,6 +10,16 @@ from app.core.scheduler import start_scheduler, stop_scheduler
 
 Base.metadata.create_all(bind=engine)
 
+# Add deleted_at column to existing databases that predate soft-delete
+with engine.connect() as _conn:
+    try:
+        _conn.execute(__import__("sqlalchemy").text(
+            "ALTER TABLE scheduled_emails ADD COLUMN deleted_at DATETIME"
+        ))
+        _conn.commit()
+    except Exception:
+        pass  # column already exists
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -201,9 +201,9 @@ def send_now(
     return email
 
 
-# ── Delete a draft ────────────────────────────────────────────────────────────
+# ── Soft-delete (move to trash) ───────────────────────────────────────────────
 
-@router.delete("/{email_id}", status_code=204)
+@router.delete("/{email_id}", response_model=ScheduledEmailOut)
 def delete_email(
     email_id: int,
     db: Session = Depends(get_db),
@@ -211,10 +211,41 @@ def delete_email(
 ):
     email = _get_owned_email(email_id, user_id, db)
     if email.status == "pending":
-        raise HTTPException(
-            status_code=400,
-            detail="Cancel the scheduled send first before deleting.",
-        )
+        email.scheduled_at = None  # cancel schedule automatically
+    email.status = "deleted"
+    email.deleted_at = datetime.utcnow()
+    db.commit()
+    db.refresh(email)
+    return email
+
+
+# ── Restore from trash ────────────────────────────────────────────────────────
+
+@router.post("/{email_id}/restore", response_model=ScheduledEmailOut)
+def restore_email(
+    email_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    if email.status != "deleted":
+        raise HTTPException(status_code=400, detail="Only deleted emails can be restored.")
+    email.status = "draft"
+    email.deleted_at = None
+    db.commit()
+    db.refresh(email)
+    return email
+
+
+# ── Permanent delete ──────────────────────────────────────────────────────────
+
+@router.delete("/{email_id}/permanent", status_code=204)
+def permanent_delete(
+    email_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
     db.delete(email)
     db.commit()
 

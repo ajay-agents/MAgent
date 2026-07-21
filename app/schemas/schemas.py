@@ -80,9 +80,10 @@ class ScheduledEmailOut(BaseModel):
     recipient_email: str
     subject: str
     body: str
-    status: str                    # draft | pending | sent | failed
+    status: str                    # draft | pending | sent | failed | deleted
     scheduled_at: datetime | None
     sent_at: datetime | None
+    deleted_at: datetime | None
     created_at: datetime
     ai_model: str | None
     prompt_tokens: int | None
@@ -105,6 +106,7 @@ class EmailListItem(BaseModel):
     status: str
     scheduled_at: datetime | None
     sent_at: datetime | None
+    deleted_at: datetime | None
     created_at: datetime
     ai_model: str | None
     estimated_cost_usd: float | None

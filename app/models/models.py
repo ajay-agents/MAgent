@@ -46,7 +46,8 @@ class ScheduledEmail(Base):
     # scheduling fields
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | pending | sent | failed
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | pending | sent | failed | deleted
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
