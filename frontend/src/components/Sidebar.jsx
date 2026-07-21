@@ -13,9 +13,18 @@ import {
 } from "react-icons/fi";
 
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const Sidebar = () => {
   const { darkMode } = useTheme();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   const hasDraft = localStorage.getItem("hasDraft") === "true";
 
@@ -94,6 +103,7 @@ const Sidebar = () => {
         }`}
       >
         <button
+          onClick={handleLogout}
           className={`w-full flex items-center gap-3 justify-center py-3 rounded-xl transition font-medium ${
             darkMode
               ? "bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500 text-white shadow-lg shadow-purple-500/20 hover:scale-105"
