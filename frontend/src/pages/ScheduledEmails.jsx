@@ -97,6 +97,7 @@ export default function ScheduledEmails() {
               <div className="relative">
                 <FiSearch className="absolute left-4 top-4 text-gray-400" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && setSearch("")}
                   placeholder="Search by name, email or subject..."
                   className={`w-96 pl-11 pr-5 py-3 rounded-2xl border outline-none ${darkMode ? "bg-[#11141D] border-gray-700 text-white placeholder:text-gray-500" : "bg-white border-gray-200"}`} />
               </div>

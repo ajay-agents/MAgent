@@ -85,8 +85,10 @@ export default function Drafts() {
             </div>
             <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${darkMode ? "bg-[#11141D] border-gray-700" : "bg-white border-gray-200"}`}>
               <FiSearch className="text-gray-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search drafts..."
-                className={`bg-transparent outline-none ${darkMode ? "text-white" : "text-gray-900"}`} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && setSearch("")}
+                placeholder="Search drafts..."
+                className={`bg-transparent outline-none w-56 ${darkMode ? "text-white placeholder:text-gray-500" : "text-gray-900"}`} />
             </div>
           </div>
 

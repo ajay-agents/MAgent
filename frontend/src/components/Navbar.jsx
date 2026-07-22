@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { FiSearch, FiBell, FiMoon, FiSun, FiSend, FiClock, FiFileText, FiAlertCircle } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 
 const STATUS_ICON = {
@@ -26,10 +27,53 @@ const Navbar = () => {
     : "User";
   const initial = displayName.charAt(0).toUpperCase();
 
-  const [showNotif, setShowNotif]   = useState(false);
-  const [notifs, setNotifs]         = useState([]);
-  const [unread, setUnread]         = useState(0);
-  const bellRef                     = useRef(null);
+  const navigate = useNavigate();
+
+  const [showNotif, setShowNotif]       = useState(false);
+  const [notifs, setNotifs]             = useState([]);
+  const [unread, setUnread]             = useState(0);
+  const bellRef                         = useRef(null);
+
+  const [searchQuery, setSearchQuery]   = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearch, setShowSearch]     = useState(false);
+  const [allEmails, setAllEmails]       = useState([]);
+  const searchRef                       = useRef(null);
+
+  // Load all emails once for client-side search
+  useEffect(() => {
+    api.get("/api/emails").then(setAllEmails).catch(() => {});
+  }, []);
+
+  // Filter on every keystroke
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) { setSearchResults([]); setShowSearch(false); return; }
+    const matches = allEmails
+      .filter((e) =>
+        e.subject?.toLowerCase().includes(q) ||
+        e.recipient_name?.toLowerCase().includes(q) ||
+        e.recipient_email?.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+    setSearchResults(matches);
+    setShowSearch(true);
+  }, [searchQuery, allEmails]);
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => { if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearch(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const STATUS_ROUTE = { draft: "/drafts", pending: "/scheduled-emails", sent: "/sent-emails", failed: "/sent-emails", deleted: "/deleted-emails" };
+
+  const handleResultClick = (email) => {
+    setSearchQuery("");
+    setShowSearch(false);
+    navigate(STATUS_ROUTE[email.status] || "/dashboard");
+  };
 
   const fetchNotifs = useCallback(async () => {
     try {
@@ -63,17 +107,44 @@ const Navbar = () => {
       }`}
     >
       {/* SEARCH */}
-      <div className="relative w-[520px]">
+      <div className="relative w-[520px]" ref={searchRef}>
         <FiSearch className={`absolute left-4 top-1/2 -translate-y-1/2 ${darkMode ? "text-gray-500" : "text-gray-400"}`} />
         <input
           type="text"
-          placeholder="Search emails, templates, campaigns..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => searchQuery.trim() && setShowSearch(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); }
+            if (e.key === "Enter" && searchResults.length > 0) { handleResultClick(searchResults[0]); }
+          }}
+          placeholder="Search emails, recipients, subjects..."
           className={`w-full h-12 pl-11 pr-4 rounded-xl border outline-none transition ${
             darkMode
               ? "bg-[#11141D] border-gray-800 text-white placeholder:text-gray-500 focus:ring-2 focus:ring-purple-500"
               : "bg-white border-gray-200 text-gray-900 focus:ring-2 focus:ring-gray-300"
           }`}
         />
+        {showSearch && (
+          <div className={`absolute top-14 left-0 w-full rounded-2xl shadow-2xl border z-50 overflow-hidden ${darkMode ? "bg-[#11141D] border-gray-800" : "bg-white border-gray-200"}`}>
+            {searchResults.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">No results for "{searchQuery}"</div>
+            ) : (
+              <div className="divide-y divide-gray-800/20 max-h-80 overflow-y-auto">
+                {searchResults.map((e) => (
+                  <button key={e.id} onClick={() => handleResultClick(e)}
+                    className={`w-full flex items-start gap-3 px-4 py-3 text-left transition hover:bg-gray-500/10`}>
+                    <div className="mt-0.5">{STATUS_ICON[e.status] || STATUS_ICON.draft}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium truncate ${darkMode ? "text-white" : "text-gray-800"}`}>{e.subject}</p>
+                      <p className="text-xs text-gray-500 truncate">To: {e.recipient_name} ({e.recipient_email}) · <span className="capitalize">{e.status}</span></p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* RIGHT SIDE */}

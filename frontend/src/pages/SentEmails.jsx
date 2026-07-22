@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import { FiRefreshCw, FiMail, FiCheckCircle, FiXCircle } from "react-icons/fi";
+import { FiRefreshCw, FiMail, FiCheckCircle, FiXCircle, FiSearch } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
 import { api } from "../services/api";
 
@@ -11,7 +11,8 @@ export default function SentEmails() {
   const { darkMode } = useTheme();
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("All");
+  const [tab, setTab]       = useState("All");
+  const [search, setSearch] = useState("");
 
   const fetchEmails = useCallback(async () => {
     setLoading(true);
@@ -27,7 +28,14 @@ export default function SentEmails() {
 
   useEffect(() => { fetchEmails(); }, [fetchEmails]);
 
-  const displayed = tab === "All" ? emails : emails.filter((e) => e.status === tab.toLowerCase());
+  const byTab     = tab === "All" ? emails : emails.filter((e) => e.status === tab.toLowerCase());
+  const displayed = search.trim()
+    ? byTab.filter((e) =>
+        e.recipient_email?.toLowerCase().includes(search.toLowerCase()) ||
+        e.recipient_name?.toLowerCase().includes(search.toLowerCase()) ||
+        e.subject?.toLowerCase().includes(search.toLowerCase())
+      )
+    : byTab;
   const sentCount   = emails.filter((e) => e.status === "sent").length;
   const failedCount = emails.filter((e) => e.status === "failed").length;
 
@@ -63,13 +71,22 @@ export default function SentEmails() {
               <StatBox label="Failed" value={failedCount} color="text-red-500" icon={<FiXCircle size={28} className="text-red-500" />} darkMode={darkMode} />
             </div>
 
-            <div className="flex gap-2 mb-5">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex gap-2">
               {["All", "Sent", "Failed"].map((item) => (
                 <button key={item} onClick={() => setTab(item)}
                   className={`px-5 py-2 rounded-xl text-sm font-medium transition ${tab === item ? darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600 text-white" : "bg-gray-900 text-white" : darkMode ? "text-gray-400 hover:text-white" : "text-gray-500 hover:text-gray-900"}`}>
                   {item}
                 </button>
               ))}
+              </div>
+              <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border ${darkMode ? "bg-[#11141D] border-gray-700" : "bg-white border-gray-200"}`}>
+                <FiSearch className="text-gray-400" size={15} />
+                <input value={search} onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && setSearch("")}
+                  placeholder="Search by recipient or subject..."
+                  className={`bg-transparent outline-none w-64 text-sm ${darkMode ? "text-white placeholder:text-gray-500" : "text-gray-900"}`} />
+              </div>
             </div>
 
             <div className={`rounded-2xl border overflow-hidden shadow-xl ${darkMode ? "bg-[#11141D] border-gray-800" : "bg-white border-gray-200"}`}>

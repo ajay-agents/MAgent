@@ -92,6 +92,7 @@ const DeletedEmails = () => {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && setSearch("")}
                   placeholder="Search deleted emails..."
                   className={`bg-transparent outline-none w-full text-sm ${darkMode ? "text-white placeholder-gray-500" : "text-gray-800"}`}
                 />
