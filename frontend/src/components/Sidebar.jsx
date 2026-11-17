@@ -10,6 +10,7 @@ import {
   FiLogOut,
   FiTrash2,
   FiFileText,
+  FiLayers,
 } from "react-icons/fi";
 
 import { useTheme } from "../context/ThemeContext";
@@ -74,6 +75,8 @@ const Sidebar = () => {
         <SideItem to="/dashboard" icon={<FiGrid />} label="Dashboard" />
 
         <SideItem to="/create-email" icon={<FiMail />} label="Create Email" />
+
+        <SideItem to="/campaigns" icon={<FiLayers />} label="Campaigns" />
 
         <SideItem
           to="/drafts"

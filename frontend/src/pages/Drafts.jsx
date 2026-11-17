@@ -3,7 +3,7 @@ import { useTheme } from "../context/ThemeContext";
 import { api } from "../services/api";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import { FiSearch, FiEye, FiTrash2, FiFileText, FiCalendar, FiX, FiCheckCircle, FiSend } from "react-icons/fi";
+import { FiSearch, FiEdit2, FiTrash2, FiFileText, FiCalendar, FiX, FiCheckCircle, FiSend, FiSave } from "react-icons/fi";
 
 const fmt = (iso) => iso ? new Date(iso).toLocaleString() : "";
 const purposeLabel = (s) => s?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "—";
@@ -17,11 +17,14 @@ export default function Drafts() {
   const [notification, setNotification]   = useState("");
   const [loading, setLoading]         = useState(true);
   const [sending, setSending]         = useState(null); // id of draft being sent
+  const [edit, setEdit]               = useState({ subject: "", body: "" });
+  const [saving, setSaving]           = useState(false);
+  const [modalError, setModalError]   = useState("");
 
   const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(""), 3000); };
 
   useEffect(() => {
-    api.get("/api/emails?status=draft")
+    api.get("/api/emails?status=draft&include_campaigns=false") // campaign emails are reviewed on their campaign
       .then(setDrafts)
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -50,12 +53,37 @@ export default function Drafts() {
     }
   };
 
-  const viewFull = async (draft) => {
+  const openDraft = async (draft) => {
+    setModalError("");
     try {
       const full = await api.get(`/api/emails/${draft.id}`);
       setSelectedDraft(full);
-    } catch {
-      setSelectedDraft(draft);
+      setEdit({ subject: full.subject, body: full.body });
+    } catch (err) {
+      notify(err.message);
+    }
+  };
+
+  const editDirty = !!selectedDraft && (edit.subject !== selectedDraft.subject || edit.body !== selectedDraft.body);
+
+  const closeDraft = () => {
+    if (editDirty && !window.confirm("Discard your unsaved changes?")) return;
+    setSelectedDraft(null);
+  };
+
+  const saveDraft = async () => {
+    if (!edit.subject.trim() || !edit.body.trim()) { setModalError("Subject and body can't be empty."); return; }
+    setSaving(true);
+    setModalError("");
+    try {
+      const saved = await api.patch(`/api/emails/${selectedDraft.id}`, { subject: edit.subject, body: edit.body });
+      setDrafts((prev) => prev.map((d) => (d.id === saved.id ? { ...d, subject: saved.subject } : d)));
+      setSelectedDraft(null);
+      notify("Draft saved");
+    } catch (err) {
+      setModalError(err.message || "Saving failed.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -124,9 +152,9 @@ export default function Drafts() {
                 </div>
 
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => viewFull(draft)}
+                  <button onClick={() => openDraft(draft)}
                     className={`px-5 py-3 rounded-xl border flex items-center gap-2 ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
-                    <FiEye /> View
+                    <FiEdit2 /> View &amp; Edit
                   </button>
                   <button onClick={() => sendDraft(draft)} disabled={sending === draft.id}
                     className={`px-5 py-3 rounded-xl text-white flex items-center gap-2 disabled:opacity-60 ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900 hover:bg-black"}`}>
@@ -147,12 +175,27 @@ export default function Drafts() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className={`w-[600px] max-h-[80vh] overflow-y-auto rounded-3xl p-6 shadow-2xl ${darkMode ? "bg-[#11141D] text-white" : "bg-white text-gray-900"}`}>
             <div className="flex justify-between items-center mb-5">
-              <h2 className="text-2xl font-bold">Email Preview</h2>
-              <button onClick={() => setSelectedDraft(null)}><FiX size={25} /></button>
+              <h2 className="text-2xl font-bold">Edit Draft</h2>
+              <button onClick={closeDraft}><FiX size={25} /></button>
             </div>
-            <p className="text-sm font-semibold text-gray-500 mb-1">Subject</p>
-            <p className="font-medium mb-4">{selectedDraft.subject}</p>
-            <p className="whitespace-pre-line">{selectedDraft.body || "No email content"}</p>
+            <p className="text-sm text-gray-500 mb-4">To {selectedDraft.recipient_name} &lt;{selectedDraft.recipient_email}&gt;</p>
+            <label className="text-sm font-semibold text-gray-500 block mb-1">Subject</label>
+            <input value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} maxLength={300}
+              className={`w-full px-4 py-3 rounded-xl border outline-none font-medium mb-4 ${darkMode ? "bg-[#090B12] border-gray-700 text-white focus:border-indigo-500" : "bg-white border-gray-200 focus:border-gray-900"}`} />
+            <label className="text-sm font-semibold text-gray-500 block mb-1">Body</label>
+            <textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} rows={12}
+              className={`w-full px-4 py-3 rounded-xl border outline-none resize-y leading-relaxed ${darkMode ? "bg-[#090B12] border-gray-700 text-white focus:border-indigo-500" : "bg-white border-gray-200 focus:border-gray-900"}`} />
+            {modalError && <p className="mt-3 text-sm text-red-400">{modalError}</p>}
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={closeDraft}
+                className={`px-5 py-3 rounded-xl border ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
+                Cancel
+              </button>
+              <button onClick={saveDraft} disabled={!editDirty || saving}
+                className={`px-5 py-3 rounded-xl text-white flex items-center gap-2 disabled:opacity-50 ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900 hover:bg-black"}`}>
+                <FiSave /> {saving ? "Saving..." : "Save"}
+              </button>
+            </div>
           </div>
         </div>
       )}

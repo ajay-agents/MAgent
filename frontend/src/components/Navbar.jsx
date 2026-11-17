@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
+import { useBilling } from "../services/billing";
 
 const STATUS_ICON = {
   sent:    <FiSend    className="text-green-400"  size={13} />,
@@ -28,6 +29,7 @@ const Navbar = () => {
   const initial = displayName.charAt(0).toUpperCase();
 
   const navigate = useNavigate();
+  const billing = useBilling();
 
   const [showNotif, setShowNotif]       = useState(false);
   const [notifs, setNotifs]             = useState([]);
@@ -220,7 +222,7 @@ const Navbar = () => {
           </div>
           <div className="text-sm leading-tight">
             <p className={`font-semibold ${darkMode ? "text-white" : "text-gray-800"}`}>{displayName}</p>
-            <p className="text-gray-400 text-xs">Pro User</p>
+            <p className="text-gray-400 text-xs">{billing ? `${billing.plan.name} plan` : "\u00a0"}</p>
           </div>
         </div>
 

@@ -103,6 +103,7 @@ export default function SentEmails() {
                   <div className="text-gray-500">{email.subject}</div>
                   <div>
                     <span className={`px-3 py-1 rounded-full border text-xs font-medium capitalize ${getStatusStyle(email.status)}`}>{email.status}</span>
+                    {email.error_message && <p className="text-xs text-red-500 mt-1">{email.error_message}</p>}
                   </div>
                   <div className="text-gray-500 text-sm">{fmtTime(email.sent_at || email.created_at)}</div>
                 </div>

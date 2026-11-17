@@ -1,19 +1,22 @@
-import sys
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.encryption import decrypt_password
-from app.core.openai_client import generate_email
+from app.core.delivery import claim_for_sending, deliver_claimed
+from app.api.routes.profile import load_profile
+from app.core.openai_client import REFINEMENT_INSTRUCTIONS, AIUnavailableError, generate_email
+from app.core.plans import QuotaExceeded, metered_ai_call
+from app.core.rate_limit import RateLimiter
+from app.core.unsubscribe import is_suppressed
 from app.core.security import get_current_user_id
-from app.core.smtp_sender import send_email
 from app.db.session import get_db
-from app.models.models import MailboxCredential, ScheduledEmail
+from app.models.models import MailboxCredential, ScheduledEmail, utcnow
 from app.schemas.schemas import (
     EmailListItem,
+    EmailUpdate,
     GenerateEmailRequest,
+    RegenerateRequest,
     GenerateEmailResponse,
     ScheduleEmailRequest,
     ScheduledEmailOut,
@@ -21,28 +24,27 @@ from app.schemas.schemas import (
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
-VALID_PURPOSES = {"cold_outreach", "follow_up", "job_application", "networking", "partnership", "thank_you"}
-VALID_TONES    = {"professional", "friendly", "formal", "casual", "persuasive"}
-VALID_LENGTHS  = {"short", "medium", "long"}
+generate_limiter = RateLimiter("generate", settings.rate_limit_generate_per_minute)
+
+EDITABLE_STATUSES = ("draft", "failed", "pending")
+
+AI_UNAVAILABLE = HTTPException(
+    status_code=503,
+    detail="The AI service is temporarily unavailable. Please try again in a minute.",
+)
 
 
 # ── Generate & save as draft ──────────────────────────────────────────────────
 
-@router.post("/generate", response_model=GenerateEmailResponse, status_code=201)
+@router.post("/generate", response_model=GenerateEmailResponse, status_code=201,
+             dependencies=[Depends(generate_limiter)])
 def generate(
     payload: GenerateEmailRequest,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    if payload.purpose not in VALID_PURPOSES:
-        raise HTTPException(status_code=400, detail=f"purpose must be one of: {', '.join(sorted(VALID_PURPOSES))}")
-    if payload.tone not in VALID_TONES:
-        raise HTTPException(status_code=400, detail=f"tone must be one of: {', '.join(sorted(VALID_TONES))}")
-    if payload.length not in VALID_LENGTHS:
-        raise HTTPException(status_code=400, detail=f"length must be one of: {', '.join(sorted(VALID_LENGTHS))}")
-
     try:
-        result = generate_email(
+        result = metered_ai_call(db, user_id, lambda: generate_email(
             purpose=payload.purpose,
             tone=payload.tone,
             length=payload.length,
@@ -50,9 +52,12 @@ def generate(
             recipient_name=payload.recipient_name,
             recipient_email=str(payload.recipient_email),
             context=payload.context,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Email generation failed: {e}")
+            profile=load_profile(db, user_id),
+        ))
+    except QuotaExceeded as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+    except AIUnavailableError:
+        raise AI_UNAVAILABLE
 
     draft = ScheduledEmail(
         user_id=user_id,
@@ -93,13 +98,18 @@ def generate(
 @router.get("", response_model=list[EmailListItem])
 def list_emails(
     status: str | None = Query(default=None, description="Filter by status: draft, pending, sent, failed"),
+    include_campaigns: bool = Query(default=True, description="false hides emails that belong to a campaign"),
+    limit: int = Query(default=500, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
     q = db.query(ScheduledEmail).filter(ScheduledEmail.user_id == user_id)
     if status:
         q = q.filter(ScheduledEmail.status == status)
-    return q.order_by(ScheduledEmail.created_at.desc()).all()
+    if not include_campaigns:
+        q = q.filter(ScheduledEmail.campaign_id.is_(None))
+    return q.order_by(ScheduledEmail.created_at.desc()).offset(offset).limit(limit).all()
 
 
 # ── Get single email ──────────────────────────────────────────────────────────
@@ -111,6 +121,82 @@ def get_email(
     user_id: int = Depends(get_current_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
+    return email
+
+
+# ── Edit by hand ──────────────────────────────────────────────────────────────
+
+@router.patch("/{email_id}", response_model=ScheduledEmailOut)
+def update_email(
+    email_id: int,
+    payload: EmailUpdate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    changes = payload.model_dump(exclude_none=True)
+    if not changes:
+        return email
+    _require_editable(email)
+    # Conditional on status so an edit can't land after the scheduler has started sending
+    if not _transition(db, email_id, (email.status,), **changes, edited_at=utcnow()):
+        raise HTTPException(status_code=409, detail="This email changed while you were editing. Reload and try again.")
+    db.refresh(email)
+    return email
+
+
+# ── Regenerate / refine with AI ───────────────────────────────────────────────
+
+@router.post("/{email_id}/regenerate", response_model=ScheduledEmailOut,
+             dependencies=[Depends(generate_limiter)])
+def regenerate_email(
+    email_id: int,
+    payload: RegenerateRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    email = _get_owned_email(email_id, user_id, db)
+    _require_editable(email)
+
+    instructions = [i for i in (REFINEMENT_INSTRUCTIONS.get(payload.refinement or ""),
+                                (payload.instruction or "").strip()) if i]
+    revision = (
+        {"subject": email.subject, "body": email.body, "instruction": " ".join(instructions)}
+        if instructions else None
+    )
+    profile = load_profile(db, user_id)
+    try:
+        result = metered_ai_call(db, user_id, lambda: generate_email(
+            purpose=email.purpose,
+            tone=email.tone,
+            length=email.length,
+            sender_name=email.sender_name,
+            recipient_name=email.recipient_name,
+            recipient_email=email.recipient_email,
+            context=email.context,
+            profile=profile,
+            revision=revision,
+        ))
+    except QuotaExceeded as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+    except AIUnavailableError:
+        raise AI_UNAVAILABLE
+
+    # Token/cost fields accumulate so usage reflects every AI call made for this email
+    updated = _transition(
+        db, email_id, (email.status,),
+        # Follow-ups keep their "Re: ..." subject so they stay in the same thread
+        subject=email.subject if email.step else result["subject"],
+        body=result["body"],
+        ai_model=result["ai_model"],
+        prompt_tokens=(email.prompt_tokens or 0) + result["prompt_tokens"],
+        completion_tokens=(email.completion_tokens or 0) + result["completion_tokens"],
+        total_tokens=(email.total_tokens or 0) + result["total_tokens"],
+        estimated_cost_usd=round((email.estimated_cost_usd or 0) + result["estimated_cost_usd"], 8),
+    )
+    if not updated:
+        raise HTTPException(status_code=409, detail="This email changed while regenerating. Reload and try again.")
+    db.refresh(email)
     return email
 
 
@@ -131,6 +217,7 @@ def schedule_email(
         )
     email.scheduled_at = payload.scheduled_at
     email.status = "pending"
+    email.error_message = None
     db.commit()
     db.refresh(email)
     return email
@@ -150,9 +237,9 @@ def cancel_schedule(
             status_code=400,
             detail=f"Only pending emails can be unscheduled. Current status: {email.status}",
         )
-    email.status = "draft"
-    email.scheduled_at = None
-    db.commit()
+    # Conditional update: the scheduler may have claimed it since we loaded it
+    if not _transition(db, email_id, ("pending",), status="draft", scheduled_at=None):
+        raise HTTPException(status_code=409, detail="This email is already being sent.")
     db.refresh(email)
     return email
 
@@ -166,37 +253,23 @@ def send_now(
     user_id: int = Depends(get_current_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
-    if email.status == "sent":
-        raise HTTPException(status_code=400, detail="Email has already been sent.")
-    if email.status == "pending":
-        # Cancel the scheduled send and send immediately instead
-        email.scheduled_at = None
+    if email.status not in ("draft", "failed", "pending"):
+        raise HTTPException(status_code=400, detail=f"Email cannot be sent. Current status: {email.status}")
 
-    cred = db.query(MailboxCredential).filter(MailboxCredential.user_id == user_id).first()
-    if not cred:
+    if not db.query(MailboxCredential).filter(MailboxCredential.user_id == user_id).first():
         raise HTTPException(
             status_code=400,
             detail="No Gmail account configured. Add your credentials in Settings first.",
         )
+    if is_suppressed(db, user_id, email.recipient_email):
+        raise HTTPException(status_code=400, detail=f"{email.recipient_email} unsubscribed or is on your "
+                                                    "do-not-contact list, so this email can't be sent.")
 
-    try:
-        password = decrypt_password(cred.encrypted_app_password, settings.fernet_key)
-        send_email(
-            gmail_address=cred.gmail_address,
-            app_password=password,
-            to_email=email.recipient_email,
-            subject=email.subject,
-            body=email.body,
-        )
-    except Exception as exc:
-        email.status = "failed"
-        db.commit()
-        print(f"[Send] Failed id={email_id}: {exc}", file=sys.stderr)
-        raise HTTPException(status_code=502, detail=f"SMTP send failed: {exc}")
-
-    email.status = "sent"
-    email.sent_at = datetime.utcnow()
-    db.commit()
+    # A pending email sent now is no longer scheduled
+    if not claim_for_sending(db, email_id, ("draft", "failed", "pending"), clear_schedule=True):
+        raise HTTPException(status_code=409, detail="This email is already being sent.")
+    if not deliver_claimed(db, email):
+        raise HTTPException(status_code=502, detail=email.error_message)
     db.refresh(email)
     return email
 
@@ -210,11 +283,12 @@ def delete_email(
     user_id: int = Depends(get_current_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
-    if email.status == "pending":
-        email.scheduled_at = None  # cancel schedule automatically
-    email.status = "deleted"
-    email.deleted_at = datetime.utcnow()
-    db.commit()
+    from_status = email.status
+    values = {"status": "deleted", "deleted_at": utcnow()}
+    if from_status == "pending":
+        values["scheduled_at"] = None  # cancel schedule automatically
+    if from_status == "sending" or not _transition(db, email_id, (from_status,), **values):
+        raise HTTPException(status_code=409, detail="This email is being sent right now and can't be deleted.")
     db.refresh(email)
     return email
 
@@ -246,11 +320,29 @@ def permanent_delete(
     user_id: int = Depends(get_current_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
+    if email.status == "sending":
+        raise HTTPException(status_code=409, detail="This email is being sent right now and can't be deleted.")
     db.delete(email)
     db.commit()
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _require_editable(email: ScheduledEmail) -> None:
+    if email.status not in EDITABLE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"A {email.status} email can't be changed.")
+
+
+def _transition(db: Session, email_id: int, from_statuses: tuple[str, ...], **values) -> bool:
+    """Update an email only if it is still in one of from_statuses."""
+    result = db.execute(
+        update(ScheduledEmail)
+        .where(ScheduledEmail.id == email_id, ScheduledEmail.status.in_(from_statuses))
+        .values(**values)
+    )
+    db.commit()
+    return result.rowcount == 1
+
 
 def _get_owned_email(email_id: int, user_id: int, db: Session) -> ScheduledEmail:
     email = db.query(ScheduledEmail).filter(

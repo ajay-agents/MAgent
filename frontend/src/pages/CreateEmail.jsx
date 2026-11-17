@@ -1,10 +1,20 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
 import { api } from "../services/api";
-import { FiCalendar, FiSend, FiMessageSquare, FiCopy, FiCheckCircle, FiX } from "react-icons/fi";
+import UpgradeModal from "../components/UpgradeModal";
+import { FiCalendar, FiSend, FiSave, FiCopy, FiCheckCircle, FiX, FiRefreshCw } from "react-icons/fi";
 import { HiSparkles } from "react-icons/hi2";
+
+const REFINEMENTS = [
+  { key: "shorter",     label: "Shorter" },
+  { key: "longer",      label: "Longer" },
+  { key: "warmer",      label: "Warmer" },
+  { key: "more_direct", label: "More direct" },
+  { key: "more_formal", label: "More formal" },
+];
 
 const PURPOSE_MAP = {
   "Cold Outreach": "cold_outreach",
@@ -30,16 +40,88 @@ export default function CreateEmail() {
   });
 
   const [loading, setLoading]               = useState(false);
-  const [generatedEmail, setGeneratedEmail] = useState(null); // { id, subject, body }
+  const [generatedEmail, setGeneratedEmail] = useState(null); // last saved server version { id, subject, body, ... }
+  const [draft, setDraft]                   = useState({ subject: "", body: "" }); // what's in the editor
+  const [busy, setBusy]                     = useState("");   // "" | "saving" | "regenerate" | refinement key | "custom"
+  const [customInstruction, setCustomInstruction] = useState("");
+  const [profileMissing, setProfileMissing] = useState(false);
   const [notification, setNotification]     = useState("");
   const [scheduleData, setScheduleData]     = useState({ date: "", time: "" });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [error, setError]                   = useState("");
+  const [error, setErrorText]               = useState("");
   const [modalError, setModalError]         = useState("");
+  const [limitHit, setLimitHit]             = useState(false); // last error was a plan limit (402)
+  const [showPlans, setShowPlans]           = useState(false);
+
+  const setError = (msg) => { setErrorText(msg); setLimitHit(false); };
+  const fail = (err, fallback) => {
+    setErrorText(err.message || fallback);
+    setLimitHit(err.status === 402);
+  };
 
   const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(""), 3000); };
 
   const handleChange = (name, value) => setFormData((prev) => ({ ...prev, [name]: value }));
+
+  // Prefill the sender from the saved profile
+  useEffect(() => {
+    api.get("/api/profile")
+      .then((p) => {
+        if (p.full_name) setFormData((prev) => (prev.sender ? prev : { ...prev, sender: p.full_name }));
+        setProfileMissing(!p.full_name && !p.company && !p.about);
+      })
+      .catch(() => {});
+  }, []);
+
+  const showEmail = (email) => {
+    setGeneratedEmail(email);
+    setDraft({ subject: email.subject, body: email.body });
+  };
+
+  const dirty = !!generatedEmail && (draft.subject !== generatedEmail.subject || draft.body !== generatedEmail.body);
+
+  const saveEdits = async () => {
+    if (!dirty) return generatedEmail;
+    if (!draft.subject.trim() || !draft.body.trim()) throw new Error("Subject and body can't be empty.");
+    setBusy("saving");
+    try {
+      const saved = await api.patch(`/api/emails/${generatedEmail.id}`, { subject: draft.subject, body: draft.body });
+      setGeneratedEmail(saved);
+      return saved;
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const handleSave = async () => {
+    setError("");
+    try {
+      await saveEdits();
+      notify("Changes saved");
+    } catch (err) {
+      setError(err.message || "Saving failed.");
+    }
+  };
+
+  // No refinement = a fresh take from the original inputs; otherwise rewrite the current (saved) draft
+  const regenerate = async (refinement = null, instruction = null) => {
+    if (!generatedEmail) return handleGenerate();
+    const isFresh = !refinement && !instruction;
+    if (isFresh && dirty && !window.confirm("Regenerating replaces your edits. Continue?")) return;
+    setError("");
+    try {
+      if (!isFresh) await saveEdits(); // so the AI revises what the user actually sees
+      setBusy(refinement || (instruction ? "custom" : "regenerate"));
+      const result = await api.post(`/api/emails/${generatedEmail.id}/regenerate`, { refinement, instruction });
+      showEmail(result);
+      if (instruction) setCustomInstruction("");
+      notify(isFresh ? "New version generated" : "Email refined");
+    } catch (err) {
+      fail(err, "Regeneration failed.");
+    } finally {
+      setBusy("");
+    }
+  };
 
   const handleGenerate = async () => {
     if (!formData.sender || !formData.recipient || !formData.email) {
@@ -58,10 +140,10 @@ export default function CreateEmail() {
         recipient_email: formData.email,
         context:         formData.context || null,
       });
-      setGeneratedEmail(result); // { id, subject, body, ai_model, ... }
+      showEmail(result); // { id, subject, body, ai_model, ... }
       notify("Email generated and saved as draft");
     } catch (err) {
-      setError(err.message || "Generation failed. Check your API key.");
+      fail(err, "Generation failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -69,7 +151,7 @@ export default function CreateEmail() {
 
   const copyEmail = () => {
     if (!generatedEmail) return;
-    navigator.clipboard.writeText(`Subject: ${generatedEmail.subject}\n\n${generatedEmail.body}`);
+    navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`);
     notify("Email copied to clipboard");
   };
 
@@ -77,6 +159,7 @@ export default function CreateEmail() {
     if (!generatedEmail) return;
     const scheduledAt = new Date(`${scheduleData.date}T${scheduleData.time}:00`).toISOString();
     try {
+      await saveEdits();
       await api.post(`/api/emails/${generatedEmail.id}/schedule`, { scheduled_at: scheduledAt });
       notify("Email scheduled successfully");
       setShowScheduleModal(false);
@@ -92,6 +175,7 @@ export default function CreateEmail() {
     setSending(true);
     setError("");
     try {
+      await saveEdits();
       await api.post(`/api/emails/${generatedEmail.id}/send`, {});
       notify("Email sent successfully!");
     } catch (err) {
@@ -113,8 +197,13 @@ export default function CreateEmail() {
             </div>
           )}
           {error && (
-            <div className="mb-3 px-5 py-3 rounded-xl w-fit flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-400/30">
+            <div className="mb-3 px-5 py-3 rounded-xl w-fit flex items-center gap-3 bg-red-500/10 text-red-400 border border-red-400/30">
               {error}
+              {limitHit && (
+                <button onClick={() => setShowPlans(true)} className={`shrink-0 px-3 py-1 rounded-lg text-sm text-white ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900"}`}>
+                  See plans
+                </button>
+              )}
             </div>
           )}
 
@@ -148,6 +237,12 @@ export default function CreateEmail() {
                 ))}
               </div>
 
+              {profileMissing && (
+                <p className={`mt-3 text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  Tip: <Link to="/settings" className={`underline ${darkMode ? "text-indigo-300" : "text-gray-900"}`}>add your sender profile</Link> so every email knows who you are and what you offer.
+                </p>
+              )}
+
               <textarea rows={6} value={formData.context} onChange={(e) => handleChange("context", e.target.value)}
                 placeholder="Write context for AI (e.g. how you know them, what you want to achieve)..."
                 className={`w-full mt-6 p-4 rounded-xl border outline-none ${darkMode ? "bg-[#090B12] border-gray-700 text-white placeholder:text-gray-500" : "bg-white border-gray-200"}`} />
@@ -166,27 +261,59 @@ export default function CreateEmail() {
                   <h2 className="text-xl font-bold">Email Preview</h2>
                   {generatedEmail && <p className="text-xs text-gray-500 mt-0.5">Model: {generatedEmail.ai_model} · ${generatedEmail.estimated_cost_usd?.toFixed(5)}</p>}
                 </div>
-                <button onClick={handleGenerate} disabled={loading}
-                  className={`px-4 py-2 rounded-xl border ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
-                  Regenerate
+                <button onClick={() => regenerate()} disabled={loading || !!busy}
+                  className={`px-4 py-2 rounded-xl border flex items-center gap-2 disabled:opacity-50 ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
+                  <FiRefreshCw className={busy === "regenerate" ? "animate-spin" : ""} />
+                  {busy === "regenerate" ? "Regenerating..." : "Regenerate"}
                 </button>
               </div>
+
+              {generatedEmail && (
+                <div className={`border-b px-8 py-3 ${darkMode ? "border-gray-800 bg-[#11141D]" : "bg-white"}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-gray-500 mr-1">Refine:</span>
+                    {REFINEMENTS.map((r) => (
+                      <button key={r.key} onClick={() => regenerate(r.key)} disabled={!!busy}
+                        className={`px-3 py-1.5 rounded-full border text-sm transition disabled:opacity-50 ${
+                          busy === r.key
+                            ? darkMode ? "border-indigo-500 text-indigo-300" : "border-gray-900 text-gray-900"
+                            : darkMode ? "border-gray-700 text-gray-300 hover:border-indigo-500 hover:text-white" : "border-gray-200 text-gray-600 hover:border-gray-900 hover:text-gray-900"
+                        }`}>
+                        {busy === r.key ? "Refining..." : r.label}
+                      </button>
+                    ))}
+                  </div>
+                  <form onSubmit={(e) => { e.preventDefault(); if (customInstruction.trim()) regenerate(null, customInstruction.trim()); }}
+                    className="mt-2 flex gap-2">
+                    <input value={customInstruction} onChange={(e) => setCustomInstruction(e.target.value)} maxLength={500}
+                      placeholder='Or tell the AI what to change, e.g. "mention our free trial"'
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none ${darkMode ? "bg-[#090B12] border-gray-700 text-white placeholder:text-gray-500 focus:border-indigo-500" : "bg-white border-gray-200 focus:border-gray-900"}`} />
+                    <button type="submit" disabled={!!busy || !customInstruction.trim()}
+                      className={`px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50 ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900"}`}>
+                      {busy === "custom" ? "Applying..." : "Apply"}
+                    </button>
+                  </form>
+                </div>
+              )}
 
               <div className="flex-1 p-8 overflow-y-auto">
                 <div className={`rounded-2xl shadow-lg p-6 space-y-5 border ${darkMode ? "bg-[#11141D] border-gray-800" : "bg-white border-gray-200"}`}>
                   {generatedEmail ? (
                     <>
-                      <div className="flex justify-between items-start">
-                        <div>
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
                           <p className="text-xs text-gray-500 mb-1">Subject</p>
-                          <p className="font-semibold">{generatedEmail.subject}</p>
+                          <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} maxLength={300}
+                            className={`w-full font-semibold bg-transparent outline-none rounded-lg px-2 py-1 -mx-2 border border-transparent transition ${darkMode ? "hover:border-gray-700 focus:border-indigo-500" : "hover:border-gray-200 focus:border-gray-900"}`} />
                         </div>
                         <button onClick={copyEmail} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
                           <FiCopy /> Copy
                         </button>
                       </div>
                       <hr className={darkMode ? "border-gray-800" : "border-gray-200"} />
-                      <p className="whitespace-pre-line">{generatedEmail.body}</p>
+                      <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={14}
+                        className={`w-full bg-transparent outline-none resize-y rounded-lg px-2 py-1 -mx-2 border border-transparent leading-relaxed transition ${darkMode ? "hover:border-gray-700 focus:border-indigo-500" : "hover:border-gray-200 focus:border-gray-900"}`} />
+                      <p className="text-xs text-gray-500">Click the subject or body to edit.</p>
                     </>
                   ) : (
                     <p className="text-gray-500 text-center py-12">Your generated email will appear here.</p>
@@ -195,8 +322,13 @@ export default function CreateEmail() {
               </div>
 
               <div className={`border-t px-8 py-5 flex justify-between ${darkMode ? "bg-[#11141D] border-gray-800" : "bg-white"}`}>
-                <button className={`px-4 py-2 rounded-xl border flex items-center gap-2 ${darkMode ? "border-gray-700 text-gray-400" : "text-gray-400 border-gray-200"}`} disabled>
-                  <FiMessageSquare /> Auto-saved
+                <button onClick={handleSave} disabled={!dirty || !!busy}
+                  className={`px-4 py-2 rounded-xl border flex items-center gap-2 transition ${
+                    dirty
+                      ? darkMode ? "border-indigo-500 text-white hover:bg-gray-800" : "border-gray-900 text-gray-900 hover:bg-gray-100"
+                      : darkMode ? "border-gray-700 text-gray-400" : "text-gray-400 border-gray-200"
+                  }`}>
+                  <FiSave /> {busy === "saving" ? "Saving..." : dirty ? "Save changes" : generatedEmail ? "Saved" : "Auto-saved"}
                 </button>
                 <div className="flex gap-3">
                   <button onClick={() => { if (!generatedEmail) { setError("Generate an email first."); return; } setShowScheduleModal(true); }}
@@ -213,6 +345,8 @@ export default function CreateEmail() {
           </div>
         </main>
       </div>
+
+      {showPlans && <UpgradeModal darkMode={darkMode} onClose={() => setShowPlans(false)} />}
 
       {showScheduleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

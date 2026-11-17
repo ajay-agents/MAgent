@@ -10,6 +10,8 @@ import DeletedEmails   from "./pages/DeletedEmails.jsx";
 import Drafts          from "./pages/Drafts.jsx";
 import EditEmail       from "./pages/EditEmail.jsx";
 import Settings        from "./pages/Settings.jsx";
+import Campaigns       from "./pages/Campaigns.jsx";
+import CampaignDetail  from "./pages/CampaignDetail.jsx";
 import AuthModal       from "./pages/AuthModal";
 import ProtectedRoute  from "./components/ProtectedRoute";
 
@@ -30,6 +32,8 @@ const App = () => {
         <Route path="/deleted-emails"  element={<ProtectedRoute><DeletedEmails /></ProtectedRoute>} />
         <Route path="/drafts"          element={<ProtectedRoute><Drafts /></ProtectedRoute>} />
         <Route path="/settings"        element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/campaigns"       element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
+        <Route path="/campaigns/:id"   element={<ProtectedRoute><CampaignDetail /></ProtectedRoute>} />
         <Route path="/edit-email"      element={<ProtectedRoute><EditEmail /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

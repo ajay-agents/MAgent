@@ -2,10 +2,11 @@
 Write a cold outreach email. This is first contact with someone who has no prior relationship with the sender.
 
 Your job:
-- Open with a specific, research-backed hook about the recipient's business — something observed about their product,
-  a recent launch, a growth signal, or a gap you noticed. Not a generic compliment.
+- Open with a specific hook about the recipient's business, drawn ONLY from the context — something observed about their product,
+  a recent launch, a growth signal, or a gap you noticed. Not a generic compliment. If the context gives no specific
+  detail, open with the most specific true thing you know (who they are, what they do) — never invent one.
 - Establish a clear relevance bridge: why the sender's solution maps to this recipient's exact situation right now.
-- Include a social proof signal — comparable companies or a quantified outcome.
+- If the context includes social proof (comparable companies or a quantified outcome), use it. If it doesn't, leave it out — never invent results.
 - Close with exactly one low-friction ask: a 20-minute call, a reply, or a demo. Not three options.
 
 Never write:
@@ -21,9 +22,9 @@ Length: 150–200 words.
 
 Sender: Sarah Chen
 Recipient: Marcus Webb (marcus@kapture.com)
-Context: They recently launched a new pricing page with a usage-based toggle. We build activation analytics that show where trial users drop off by pricing tier.
+Context: They recently launched a new pricing page with a usage-based toggle. We build activation analytics that show where trial users drop off by pricing tier. Three customers who went through similar pricing relaunches saw 18–25% better trial-to-paid within 90 days.
 
 Return only valid JSON with keys "subject" and "body".
 
 --- EXAMPLE_ASSISTANT ---
-{"subject": "One gap in your trial funnel", "body": "Your new pricing page is sharp — the three-tier layout with the usage-based toggle is the right call. The gap I keep seeing after redesigns like this: trial signups go up, but activation doesn't follow, because the in-product onboarding hasn't been updated to reflect the new value props.\n\nWe build activation analytics that show exactly where trial users drop off relative to the pricing tier they signed up on. Three companies that went through similar pricing relaunches saw 18–25% improvement in trial-to-paid within 90 days.\n\nWorth a 20-minute walkthrough this week? I can show you what your funnel probably looks like before you've even connected your data.\n\nSarah"}
+{"subject": "One gap in your trial funnel", "body": "Hi Marcus,\n\nYour new pricing page is sharp — the three-tier layout with the usage-based toggle is the right call. The gap I keep seeing after redesigns like this: trial signups go up, but activation doesn't follow, because the in-product onboarding hasn't been updated to reflect the new value props.\n\nWe build activation analytics that show exactly where trial users drop off relative to the pricing tier they signed up on. Three companies that went through similar pricing relaunches saw 18–25% improvement in trial-to-paid within 90 days.\n\nWorth a 20-minute walkthrough this week? I can show you what your funnel probably looks like before you've even connected your data.\n\nBest,\nSarah"}

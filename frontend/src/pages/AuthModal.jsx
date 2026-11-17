@@ -45,6 +45,7 @@ export default function AuthModal({ isOpen, onClose }) {
 
     // signup
     if (!formData.email || !formData.password || !formData.confirmPassword) { setError("Please fill in all fields."); return; }
+    if (formData.password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (formData.password !== formData.confirmPassword) { setError("Passwords do not match."); return; }
     setLoading(true);
     try {

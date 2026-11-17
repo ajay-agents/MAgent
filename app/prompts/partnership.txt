@@ -4,7 +4,7 @@ Write a business partnership or collaboration proposal email.
 Your job:
 - Name the overlap explicitly: the same buyer segment, a complementary product,
   a shared market gap that neither company can close alone.
-- Quantify the opportunity if the context provides data — even a rough estimate is better than nothing.
+- Quantify the opportunity only with data the context provides. Never invent figures.
 - Propose a concrete, equal first step: a scoping call, a pilot, a joint intro.
   Treat the recipient as a peer with equal leverage, not a prospect.
 - Make clear there is no product overlap — the value is in the combination, not competition.

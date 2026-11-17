@@ -6,7 +6,7 @@ Your job:
   credential that directly maps to what this company needs.
 - Show specific knowledge of the company: a product decision, a public direction, a piece of their work
   that demonstrates real attention — not generic admiration.
-- Include measurable impact where possible (users reached, scale, outcome achieved).
+- Include measurable impact when the context provides it (users reached, scale, outcome achieved). Never invent numbers.
 - Close with a clear, direct ask: an interview, a portfolio link, or a technical screen.
 
 Never write:
