@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/api/mailbox/google/callback"
     frontend_url: str = "http://localhost:5173"  # where the OAuth callback sends the browser back to
 
+    # Max emails one user sends per rolling 24 hours. Gmail allows ~500 (personal) / ~2,000 (Workspace);
+    # staying under that avoids the account being temporarily blocked from sending.
+    daily_send_limit: int = 400
+
     # Public base URL of this API, used in unsubscribe links inside sent emails
     public_api_url: str = "http://localhost:8000"
 

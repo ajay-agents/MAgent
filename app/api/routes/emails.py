@@ -3,7 +3,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.delivery import claim_for_sending, deliver_claimed
+from app.core.delivery import claim_for_sending, daily_limit_message, deliver_claimed, sent_last_24h
 from app.api.routes.profile import load_profile
 from app.core.openai_client import REFINEMENT_INSTRUCTIONS, AIUnavailableError, generate_email
 from app.core.plans import QuotaExceeded, metered_ai_call
@@ -261,6 +261,8 @@ def send_now(
             status_code=400,
             detail="No Gmail account configured. Add your credentials in Settings first.",
         )
+    if sent_last_24h(db, user_id) >= settings.daily_send_limit:
+        raise HTTPException(status_code=429, detail=daily_limit_message(db, user_id))
     if is_suppressed(db, user_id, email.recipient_email):
         raise HTTPException(status_code=400, detail=f"{email.recipient_email} unsubscribed or is on your "
                                                     "do-not-contact list, so this email can't be sent.")

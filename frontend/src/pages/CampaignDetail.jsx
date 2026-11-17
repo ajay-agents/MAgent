@@ -362,6 +362,12 @@ function LaunchModal({ darkMode, campaign, onClose, onLaunch }) {
               <input type="number" min={1} max={30} value={delay} disabled={!canFollowUp || Number(followups) === 0} onChange={(e) => setDelay(e.target.value)} className={`${field} disabled:opacity-50`} />
             </div>
           </div>
+          {billing && n > billing.usage.daily_send_limit - billing.usage.emails_sent_24h && (
+            <p className={`text-xs rounded-lg px-3 py-2 ${darkMode ? "bg-amber-500/10 text-amber-300" : "bg-amber-50 text-amber-700"}`}>
+              You can send {Math.max(billing.usage.daily_send_limit - billing.usage.emails_sent_24h, 0)} more emails in the next 24 hours
+              (Gmail&apos;s safe daily limit is {billing.usage.daily_send_limit}). The rest will wait and go out automatically over the following days.
+            </p>
+          )}
           <p className="text-xs text-gray-500">
             Every email gets an unsubscribe link at the bottom (required by law and by Gmail). People who unsubscribe are never emailed again.
           </p>

@@ -350,6 +350,10 @@ function PlanCard({ billing, darkMode, onUpgrade }) {
           <div className={`h-full ${bar}`} style={{ width: `${pct}%` }} />
         </div>
         <p className="text-xs text-gray-500 mt-2">Every AI write counts: new emails, rewrites and refinements, campaign emails and follow-ups.</p>
+        <p className="text-sm mt-4">
+          <b>{usage.emails_sent_24h.toLocaleString()}</b> of {usage.daily_send_limit.toLocaleString()} emails sent in the last 24 hours
+          <span className="text-gray-500"> · a safe daily limit for Gmail. Anything over it waits and sends automatically.</span>
+        </p>
       </div>
     </SectionCard>
   );

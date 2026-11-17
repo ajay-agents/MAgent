@@ -1,7 +1,9 @@
 import logging
 import smtplib
 
-from sqlalchemy import update
+from datetime import timedelta
+
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -14,10 +16,26 @@ from app.models.models import MailboxCredential, ScheduledEmail, utcnow
 logger = logging.getLogger("mailflow.delivery")
 
 
+class DailyLimitReached(Exception):
+    pass
+
+
+def sent_last_24h(db: Session, user_id: int) -> int:
+    since = utcnow() - timedelta(hours=24)
+    return (db.query(func.count(ScheduledEmail.id))
+            .filter(ScheduledEmail.user_id == user_id, ScheduledEmail.status.in_(("sent", "sending")),
+                    ScheduledEmail.sent_at >= since).scalar())
+
+
+def daily_limit_message(db: Session, user_id: int) -> str:
+    return (f"You've sent {settings.daily_send_limit} emails in the last 24 hours, the safe daily limit for Gmail. "
+            "Scheduled emails will keep going out automatically as the limit frees up.")
+
+
 def claim_for_sending(db: Session, email_id: int, from_statuses: tuple[str, ...],
                       clear_schedule: bool = False) -> bool:
     """Atomically move an email to 'sending'. Returns False if another worker/request got it first."""
-    values = {"status": "sending", "error_message": None}
+    values = {"status": "sending", "error_message": None, "sent_at": utcnow()}
     if clear_schedule:
         values["scheduled_at"] = None
     result = db.execute(
@@ -77,6 +95,7 @@ def deliver_claimed(db: Session, email: ScheduledEmail) -> bool:
     cred = db.query(MailboxCredential).filter(MailboxCredential.user_id == email.user_id).first()
     if not cred:
         email.status = "failed"
+        email.sent_at = None
         email.error_message = "No Gmail account configured. Add your credentials in Settings."
         db.commit()
         return False
@@ -84,6 +103,7 @@ def deliver_claimed(db: Session, email: ScheduledEmail) -> bool:
     # Last line of defence: checked at send time, so it covers anything queued before the opt-out
     if unsubscribe.is_suppressed(db, email.user_id, email.recipient_email):
         email.status = "failed"
+        email.sent_at = None
         email.error_message = "Not sent: this address unsubscribed or is on your do-not-contact list."
         campaigns.on_email_suppressed(db, email)
         db.commit()
@@ -102,6 +122,7 @@ def deliver_claimed(db: Session, email: ScheduledEmail) -> bool:
     except Exception as exc:
         logger.warning("Send failed for email id=%s: %s: %s", email.id, type(exc).__name__, exc)
         email.status = "failed"
+        email.sent_at = None
         email.error_message = _friendly_error(exc)
         campaigns.on_email_failed(db, email)
         db.commit()
