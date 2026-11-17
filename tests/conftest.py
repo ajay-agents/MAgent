@@ -49,9 +49,11 @@ def sent(monkeypatch):
     return outbox
 
 
-def signup_and_login(client, email="user@example.com", password="correct-horse-1"):
+def signup_and_login(client, email="user@example.com", password="correct-horse-1", verified=True):
     r = client.post("/api/auth/signup", json={"email": email, "password": password})
     assert r.status_code == 201, r.text
+    if verified:
+        set_verified(email)
     r = client.post("/api/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
@@ -73,5 +75,14 @@ def set_plan(email: str, plan: str) -> None:
     from app.models.models import User
     db = SessionLocal()
     db.query(User).filter(User.email == email).one().plan = plan
+    db.commit()
+    db.close()
+
+
+def set_verified(email: str, verified: bool = True) -> None:
+    from app.db.session import SessionLocal
+    from app.models.models import User
+    db = SessionLocal()
+    db.query(User).filter(User.email == email.lower()).one().email_verified = verified
     db.commit()
     db.close()

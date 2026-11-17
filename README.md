@@ -309,6 +309,25 @@ Send one message, personalised by AI for every contact in a CSV, with optional f
 
 Campaign emails also appear under Scheduled and Sent. `GET /api/emails?include_campaigns=false` hides them; the Drafts page uses this.
 
+### Accounts: verification & passwords
+
+- **Signup** sends a verification link (valid for 3 days). Unverified users can log in, browse and set up their profile, but AI writing, sending, scheduling and campaign launch return **403** until they verify. This stops fake signups from using AI quota or sending mail. Accounts created before this feature are treated as verified.
+- **Forgot password** emails a reset link that is valid for 1 hour and works **once** (it's bound to the current password hash). The response is the same whether or not the account exists. Resetting also verifies the email.
+- **Change password** is in Settings → Account.
+- Links go to `FRONTEND_URL/verify-email` and `FRONTEND_URL/reset-password`. System emails use `SMTP_*`, which is required in production. In development, without SMTP, the emails and their links are written to the server log.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/auth/verify-email` | `{token}` |
+| POST | `/api/auth/resend-verification` | Auth required; rate-limited |
+| POST | `/api/auth/forgot-password` | `{email}` → always 202 |
+| POST | `/api/auth/reset-password` | `{token, password}` → new access token |
+| POST | `/api/auth/change-password` | `{current_password, new_password}` |
+
+### Gmail daily send limit
+
+Each user sends at most `DAILY_SEND_LIMIT` emails (default 400) per **rolling 24 hours**, safely under Gmail's ~500/day for personal accounts. Going over Gmail's limit gets the account temporarily blocked from sending. Due emails over the cap stay `pending` and go out as the window frees up. "Send now" returns **429** at the cap. Settings and the campaign launch dialog show how much is left.
+
 ### Unsubscribe & Do-Not-Contact
 
 Required for cold email by law (CAN-SPAM, GDPR) and, since 2024, by Gmail and Yahoo for bulk senders.

@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { useBilling } from "../services/billing";
+import VerifyBanner from "./VerifyBanner";
 
 const STATUS_ICON = {
   sent:    <FiSend    className="text-green-400"  size={13} />,
@@ -103,6 +104,7 @@ const Navbar = () => {
   };
 
   return (
+    <>
     <div
       className={`h-18 px-8 flex items-center justify-between border-b backdrop-blur transition-all duration-500 ${
         darkMode ? "bg-[#090B12]/90 border-gray-800" : "bg-white/70 border-gray-200"
@@ -228,6 +230,8 @@ const Navbar = () => {
 
       </div>
     </div>
+    <VerifyBanner darkMode={darkMode} />
+    </>
   );
 };
 

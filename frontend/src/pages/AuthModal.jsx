@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { FiX, FiMail, FiLock } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
@@ -14,6 +14,7 @@ export default function AuthModal({ isOpen, onClose }) {
   const [formData, setFormData] = useState({ name: "", email: "", password: "", confirmPassword: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [info, setInfo] = useState("");
 
   const handleChange = (e) => {
     setError("");
@@ -22,9 +23,25 @@ export default function AuthModal({ isOpen, onClose }) {
 
   const reset = () => setFormData({ name: "", email: "", password: "", confirmPassword: "" });
 
+  const switchTab = (t) => { setTab(t); setError(""); setInfo(""); };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    if (tab === "forgot") {
+      if (!formData.email) { setError("Enter your email address."); return; }
+      setLoading(true);
+      try {
+        const res = await api.post("/api/auth/forgot-password", { email: formData.email });
+        setInfo(res.detail);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (tab === "login") {
       if (!formData.email || !formData.password) { setError("Please fill in all fields."); return; }
@@ -79,7 +96,7 @@ export default function AuthModal({ isOpen, onClose }) {
         <div className="px-6">
           <div className={`flex rounded-full p-1 ${darkMode ? "bg-[#090B12]" : "bg-gray-100"}`}>
             {["login", "signup"].map((t) => (
-              <button key={t} onClick={() => { setTab(t); setError(""); }}
+              <button key={t} onClick={() => switchTab(t)}
                 className={`w-1/2 rounded-full py-2 font-semibold transition ${tab === t ? darkMode ? "bg-[#11141D] shadow text-white" : "bg-white shadow" : darkMode ? "text-gray-400" : "text-gray-500"}`}>
                 {t === "login" ? "Login" : "Sign Up"}
               </button>
@@ -89,16 +106,28 @@ export default function AuthModal({ isOpen, onClose }) {
 
         <form onSubmit={handleSubmit} className="space-y-5 p-6">
           {error && <div className="rounded-lg border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
+          {info && <div className={`rounded-lg px-4 py-3 text-sm ${darkMode ? "bg-green-500/15 text-green-300" : "bg-green-50 text-green-700"}`}>{info}</div>}
+          {tab === "forgot" && <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Enter your account email and we'll send you a link to choose a new password.</p>}
 
           {tab === "signup" && <InputBox label="Full Name" name="name" placeholder="John Doe" value={formData.name} onChange={handleChange} darkMode={darkMode} />}
           <InputBox label="Email" name="email" placeholder="you@company.com" icon={<FiMail />} value={formData.email} onChange={handleChange} darkMode={darkMode} />
-          <InputBox label="Password" name="password" placeholder="••••••••" type="password" icon={<FiLock />} value={formData.password} onChange={handleChange} darkMode={darkMode} />
+          {tab !== "forgot" && <InputBox label="Password" name="password" placeholder="••••••••" type="password" icon={<FiLock />} value={formData.password} onChange={handleChange} darkMode={darkMode} />}
+          {tab === "login" && (
+            <button type="button" onClick={() => switchTab("forgot")} className={`-mt-2 text-sm underline ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+              Forgot password?
+            </button>
+          )}
           {tab === "signup" && <InputBox label="Confirm Password" name="confirmPassword" placeholder="••••••••" type="password" icon={<FiLock />} value={formData.confirmPassword} onChange={handleChange} darkMode={darkMode} />}
 
           <button type="submit" disabled={loading}
             className={`w-full rounded-xl py-3 font-semibold text-white transition hover:scale-[1.02] disabled:opacity-60 ${darkMode ? "bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" : "bg-gray-900 hover:bg-black"}`}>
-            {loading ? "Please wait..." : tab === "login" ? "Log in" : "Create Account"}
+            {loading ? "Please wait..." : tab === "login" ? "Log in" : tab === "forgot" ? "Send reset link" : "Create Account"}
           </button>
+          {tab === "forgot" && (
+            <button type="button" onClick={() => switchTab("login")} className={`w-full text-sm underline ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+              Back to log in
+            </button>
+          )}
         </form>
       </div>
     </div>

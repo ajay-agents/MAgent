@@ -305,6 +305,7 @@ export default function Settings() {
             {/* ACCOUNT */}
             <SectionCard darkMode={darkMode}>
               <h2 className="font-semibold mb-5">Account</h2>
+              <ChangePassword darkMode={darkMode} notify={notify} />
               <button onClick={handleLogout} className="flex items-center gap-3 px-5 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white transition">
                 <FiLogOut /> Logout
               </button>
@@ -364,6 +365,52 @@ function SectionCard({ children, darkMode }) {
     <div className={`p-6 rounded-3xl border mb-6 transition ${darkMode ? "bg-[#11141D] border-gray-800" : "bg-white border-gray-200 shadow-sm"}`}>
       {children}
     </div>
+  );
+}
+
+function ChangePassword({ darkMode, notify }) {
+  const [open, setOpen]   = useState(false);
+  const [form, setForm]   = useState({ current: "", next: "", confirm: "" });
+  const [saving, setSaving] = useState(false);
+  const field = `w-full px-4 py-3 rounded-xl border outline-none ${darkMode ? "bg-[#090B12] border-gray-700 text-white" : "bg-white border-gray-200"}`;
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (form.next.length < 8) { notify("New password must be at least 8 characters.", true); return; }
+    if (form.next !== form.confirm) { notify("New passwords do not match.", true); return; }
+    setSaving(true);
+    try {
+      await api.post("/api/auth/change-password", { current_password: form.current, new_password: form.next });
+      setForm({ current: "", next: "", confirm: "" });
+      setOpen(false);
+      notify("Password changed");
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className={`mb-4 px-5 py-3 rounded-xl border ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
+        Change password
+      </button>
+    );
+  }
+  return (
+    <form onSubmit={save} className="mb-6 grid md:grid-cols-3 gap-3 max-w-3xl">
+      <input type="password" required placeholder="Current password" value={form.current} onChange={(e) => setForm({ ...form, current: e.target.value })} className={field} />
+      <input type="password" required placeholder="New password (8+)" value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} className={field} />
+      <input type="password" required placeholder="Confirm new password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} className={field} />
+      <div className="md:col-span-3 flex gap-3">
+        <button type="submit" disabled={saving} className={`px-5 py-3 rounded-xl text-white font-medium disabled:opacity-60 ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900"}`}>
+          {saving ? "Saving..." : "Save new password"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className={`px-5 py-3 rounded-xl border ${darkMode ? "border-gray-700" : "border-gray-200"}`}>Cancel</button>
+      </div>
+    </form>
   );
 }
 

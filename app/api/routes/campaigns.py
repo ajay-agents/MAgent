@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core import campaigns as svc
 from app.core import plans
-from app.core.security import get_current_user_id
+from app.core.security import get_current_user_id, get_verified_user_id
 from app.db.session import get_db
 from app.models.models import Campaign, CampaignRecipient, MailboxCredential, ScheduledEmail, utcnow
 from app.schemas.schemas import (
@@ -153,7 +153,7 @@ def mark_replied(campaign_id: int, recipient_id: int, db: Session = Depends(get_
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 @router.post("/{campaign_id}/generate", response_model=CampaignOut)
-def generate(campaign_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
+def generate(campaign_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_verified_user_id)):
     """Queue personalised first emails for every recipient without one. Runs in the background."""
     campaign = _owned(db, campaign_id, user_id)
     _require_status(campaign, "draft")
@@ -174,7 +174,7 @@ def generate(campaign_id: int, db: Session = Depends(get_db), user_id: int = Dep
 
 @router.post("/{campaign_id}/launch", response_model=CampaignOut)
 def launch(campaign_id: int, payload: CampaignLaunch, db: Session = Depends(get_db),
-           user_id: int = Depends(get_current_user_id)):
+           user_id: int = Depends(get_verified_user_id)):
     campaign = _owned(db, campaign_id, user_id)
     _require_status(campaign, "draft")
     if not db.query(MailboxCredential).filter(MailboxCredential.user_id == user_id).first():
@@ -203,7 +203,7 @@ def pause(campaign_id: int, db: Session = Depends(get_db), user_id: int = Depend
 
 
 @router.post("/{campaign_id}/resume", response_model=CampaignOut)
-def resume(campaign_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
+def resume(campaign_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_verified_user_id)):
     campaign = _owned(db, campaign_id, user_id)
     _require_status(campaign, "paused")
     svc.resume(db, campaign)

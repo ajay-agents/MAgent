@@ -33,7 +33,8 @@ def _migrate() -> None:
                              "campaign_id": "INTEGER", "campaign_recipient_id": "INTEGER", "step": "INTEGER DEFAULT 0",
                              "message_id": "VARCHAR(255)"},
         "mailbox_credentials": {"provider": "VARCHAR(20) DEFAULT 'app_password'"},
-        "users": {"plan": "VARCHAR(20) DEFAULT 'free'", "plan_updated_at": "TIMESTAMP"},
+        "users": {"plan": "VARCHAR(20) DEFAULT 'free'", "plan_updated_at": "TIMESTAMP",
+                  "email_verified": "BOOLEAN DEFAULT TRUE"},  # accounts that predate verification count as verified
         "sender_profiles": {"postal_address": "VARCHAR(300)"},
     }
     existing = inspect(engine)

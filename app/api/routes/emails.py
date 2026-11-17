@@ -9,7 +9,7 @@ from app.core.openai_client import REFINEMENT_INSTRUCTIONS, AIUnavailableError, 
 from app.core.plans import QuotaExceeded, metered_ai_call
 from app.core.rate_limit import RateLimiter
 from app.core.unsubscribe import is_suppressed
-from app.core.security import get_current_user_id
+from app.core.security import get_current_user_id, get_verified_user_id
 from app.db.session import get_db
 from app.models.models import MailboxCredential, ScheduledEmail, utcnow
 from app.schemas.schemas import (
@@ -41,7 +41,7 @@ AI_UNAVAILABLE = HTTPException(
 def generate(
     payload: GenerateEmailRequest,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
 ):
     try:
         result = metered_ai_call(db, user_id, lambda: generate_email(
@@ -153,7 +153,7 @@ def regenerate_email(
     email_id: int,
     payload: RegenerateRequest,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
     _require_editable(email)
@@ -207,7 +207,7 @@ def schedule_email(
     email_id: int,
     payload: ScheduleEmailRequest,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
     if email.status not in ("draft", "failed"):
@@ -250,7 +250,7 @@ def cancel_schedule(
 def send_now(
     email_id: int,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_verified_user_id),
 ):
     email = _get_owned_email(email_id, user_id, db)
     if email.status not in ("draft", "failed", "pending"):

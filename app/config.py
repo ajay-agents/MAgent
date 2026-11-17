@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/api/mailbox/google/callback"
     frontend_url: str = "http://localhost:5173"  # where the OAuth callback sends the browser back to
 
+    # System email (verification, password reset) — any SMTP provider: Gmail/Workspace, SES, Postmark, Brevo...
+    # Unset in development: the emails' links are written to the server log instead.
+    smtp_host: str = ""
+    smtp_port: int = 587          # 587 = STARTTLS, 465 = SSL
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""           # e.g. "MailFlow <no-reply@yourdomain.com>"
+
     # Max emails one user sends per rolling 24 hours. Gmail allows ~500 (personal) / ~2,000 (Workspace);
     # staying under that avoids the account being temporarily blocked from sending.
     daily_send_limit: int = 400
@@ -51,6 +59,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def system_mail_enabled(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from)
 
     @property
     def google_oauth_enabled(self) -> bool:
@@ -91,6 +103,8 @@ class Settings(BaseSettings):
             problems.append("GOOGLE_REDIRECT_URI must use https in production")
         if not self.public_api_url.startswith("https://"):
             problems.append("PUBLIC_API_URL must be the https URL recipients use to reach this API (unsubscribe links)")
+        if not self.system_mail_enabled:
+            problems.append("SMTP_HOST and SMTP_FROM must be set (verification and password-reset emails)")
         if "*" in self.cors_origin_list:
             problems.append("CORS_ORIGINS must list explicit origins, not '*'")
         if problems:

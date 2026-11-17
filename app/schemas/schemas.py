@@ -42,6 +42,32 @@ class UserCreate(BaseModel):
         return v
 
 
+def _check_bcrypt_limit(v: str) -> str:
+    if len(v.encode()) > 72:
+        raise ValueError("Password must be at most 72 bytes")
+    return v
+
+
+NewPassword = Annotated[str, Field(min_length=8, max_length=128), AfterValidator(_check_bcrypt_limit)]
+
+
+class TokenIn(BaseModel):
+    token: str = Field(min_length=10, max_length=2000)
+
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(TokenIn):
+    password: NewPassword
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(max_length=128)
+    new_password: NewPassword
+
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str = Field(max_length=128)
@@ -55,6 +81,7 @@ class Token(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
+    email_verified: bool = True
     created_at: UTCDateTime
 
     model_config = {"from_attributes": True}

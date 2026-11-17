@@ -4,8 +4,11 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.db.session import get_db
+from app.models.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -44,3 +47,16 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
         return int(payload["sub"])
     except (jwt.PyJWTError, ValueError):
         raise credentials_exc
+
+
+def get_verified_user_id(user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)) -> int:
+    """Like get_current_user_id, but requires a verified email (gates AI use and sending)."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Please verify your email address first. We sent a link to {user.email}.",
+        )
+    return user_id
