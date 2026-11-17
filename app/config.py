@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     fernet_key: str = _DEV_FERNET_KEY
     jwt_secret: str = _DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
+    # Signs unsubscribe links. They never expire and live in sent emails, so this key must never be
+    # rotated, unlike JWT_SECRET (rotating that just logs everyone out). Falls back to JWT_SECRET in dev.
+    link_signing_secret: str = ""
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # Google OAuth for sending through the Gmail API (optional — App Passwords work without it)
@@ -61,6 +64,10 @@ class Settings(BaseSettings):
         return self.environment.lower() == "production"
 
     @property
+    def link_secret(self) -> str:
+        return self.link_signing_secret or self.jwt_secret
+
+    @property
     def system_mail_enabled(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
 
@@ -73,7 +80,7 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @field_validator("openai_api_key", "gemini_api_key", "groq_api_key", "fernet_key", "jwt_secret",
-                     "google_client_id", "google_client_secret", mode="before")
+                     "google_client_id", "google_client_secret", "link_signing_secret", mode="before")
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
@@ -97,6 +104,8 @@ class Settings(BaseSettings):
         problems = []
         if self.jwt_secret == _DEV_JWT_SECRET or len(self.jwt_secret) < 32:
             problems.append("JWT_SECRET must be set to a random string of at least 32 characters")
+        if len(self.link_signing_secret) < 32 or self.link_signing_secret == self.jwt_secret:
+            problems.append("LINK_SIGNING_SECRET must be set: 32+ random characters, different from JWT_SECRET")
         if self.fernet_key == _DEV_FERNET_KEY:
             problems.append("FERNET_KEY must be set (the built-in dev key is public)")
         if self.google_oauth_enabled and not self.google_redirect_uri.startswith("https://"):

@@ -16,12 +16,12 @@ _PURPOSE = "unsubscribe"
 def make_token(user_id: int, email: str) -> str:
     # No expiry: an unsubscribe link must keep working for as long as the email exists
     return jwt.encode({"purpose": _PURPOSE, "u": user_id, "e": email.lower()},
-                      settings.jwt_secret, algorithm=settings.jwt_algorithm)
+                      settings.link_secret, algorithm=settings.jwt_algorithm)
 
 
 def read_token(token: str) -> tuple[int, str]:
     """(user_id, email); raises jwt.PyJWTError/KeyError/ValueError if the token is invalid."""
-    data = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    data = jwt.decode(token, settings.link_secret, algorithms=[settings.jwt_algorithm])
     if data.get("purpose") != _PURPOSE:
         raise ValueError("not an unsubscribe token")
     return int(data["u"]), str(data["e"])

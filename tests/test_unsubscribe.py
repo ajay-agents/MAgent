@@ -182,3 +182,11 @@ def test_remove_from_list(client, user):
     assert client.delete("/api/suppressions/priya@example.com", headers=user).status_code == 204
     assert client.get("/api/suppressions", headers=user).json() == []
     assert client.delete("/api/suppressions/priya@example.com", headers=user).status_code == 404
+
+
+def test_links_survive_jwt_secret_rotation(client, user, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "link_signing_secret", "s" * 40)
+    url = unsubscribe.unsubscribe_url(_uid(), "priya@example.com")
+    monkeypatch.setattr(settings, "jwt_secret", "rotated-" + "x" * 40)
+    assert "Unsubscribe?" in client.get(_path(url)).text
