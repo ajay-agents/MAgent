@@ -1,0 +1,26 @@
+# One domain for everything. Caddy obtains and renews the HTTPS certificate automatically.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# API, unsubscribe pages and health check -> FastAPI
+	@backend path /api/* /u/* /health
+	handle @backend {
+		reverse_proxy api:8000
+	}
+
+	# Everything else -> the React app (client-side routes fall back to index.html)
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

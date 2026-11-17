@@ -1,4 +1,5 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// "" = same origin (production behind Caddy); unset = local dev backend
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const TIMEOUT_MS = 60000; // AI generation can take a while; never hang forever
 
 function getToken() {

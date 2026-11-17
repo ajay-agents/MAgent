@@ -464,32 +464,58 @@ Tests use a throwaway SQLite database and never call real AI providers or Gmail.
 
 ## Production Deployment
 
-Set `ENVIRONMENT=production`. In production the app:
+MailFlow runs as two containers behind **one domain**: Caddy serves the React app, proxies `/api`, `/u` (unsubscribe) and `/health` to FastAPI, and obtains and renews HTTPS certificates automatically. Because everything is same-origin, there's no CORS setup, and links in emails use your own domain.
 
-- refuses to start with the built-in dev `JWT_SECRET`/`FERNET_KEY`, a JWT secret under 32 chars, `CORS_ORIGINS=*`, or a non-https `PUBLIC_API_URL`
-- disables `/docs`, `/redoc` and `/openapi.json`
-- returns `503` instead of a mock email when all AI providers fail
-- sends HSTS and other security headers
+### 1. Server and DNS
+Use any Linux VM with Docker (1 vCPU / 1 GB RAM is plenty to start). Open ports 80 and 443, and point your domain's DNS **A record** at the server.
 
-**Docker:**
+### 2. Configure `.env` on the server
+Copy `.env.example` to `.env` and set at least:
 
+| Variable | Notes |
+|---|---|
+| `DOMAIN` | e.g. `mailflow.example.com`. The URLs and CORS are derived from it |
+| `JWT_SECRET`, `LINK_SIGNING_SECRET` | Two **different** random strings, 32+ characters. Never rotate `LINK_SIGNING_SECRET` |
+| `FERNET_KEY` | Generate once and **back it up**. Losing it makes stored Gmail credentials unreadable |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | For verification and password-reset emails, e.g. Amazon SES, Postmark, Brevo or Google Workspace SMTP |
+| `GROQ_API_KEY` / `OPENAI_API_KEY` | At least one AI provider. The Groq free tier is ~5 emails/min for *all* users, so use a paid tier for real traffic |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional ("Connect with Google"). Add `https://<DOMAIN>/api/mailbox/google/callback` as a redirect URI on the OAuth client |
+| `SUPPORT_EMAIL` | Shown on the upgrade screen |
+
+`ENVIRONMENT=production` is set by the compose file. In production the app **refuses to start** if secrets are defaults, URLs aren't https, or SMTP is missing, and it lists every problem it finds.
+
+### 3. Start it
 ```bash
-docker build -t mailflow .
-docker run -d -p 8000:8000 --env-file .env -e ENVIRONMENT=production \
-  -e CORS_ORIGINS=https://app.example.com -v mailflow-data:/data mailflow
+docker compose up -d --build
+docker compose logs -f api        # look for "Starting MailFlow ... (production)"
+curl https://<DOMAIN>/health      # {"status":"ok",...}
 ```
+Update to a new version with `git pull && docker compose up -d --build`. Database migrations run automatically at startup.
 
-The SQLite database lives in the `/data` volume. Put the API behind an HTTPS reverse proxy (Caddy, nginx, or a platform load balancer). `GET /health` checks database connectivity and is used as the container healthcheck.
-
-Run **one worker per deployment**. The email scheduler and the rate limiter run inside the process. Double-sends are still prevented with more workers, but each worker would run its own scheduler, and rate limits would apply per worker.
-
-**Frontend:** build with the API URL baked in and serve `frontend/dist` from any static host:
-
+### 4. Make yourself Pro and check sending
 ```bash
-cd frontend && VITE_API_BASE_URL=https://api.example.com npm run build
+docker compose exec api python -m app.cli set-plan you@example.com pro
 ```
+Then sign up and verify your email. Connect Gmail and send a two-person test campaign to your own addresses. Check that the unsubscribe link works and that the follow-up threads correctly.
 
-**Known limits:** SQLite suits a single server. For multiple instances, switch `DATABASE_URL` to Postgres (add `psycopg[binary]`) and move rate limiting to Redis. Schema changes use a small built-in migration that only adds columns; adopt Alembic before making larger changes.
+### Backups
+All data lives in the SQLite database in the `api-data` volume. Back it up daily, and keep the backups off the server:
+```bash
+docker compose exec api python -c "import sqlite3; sqlite3.connect('/data/mailflow.db').backup(sqlite3.connect('/data/backup.db'))"
+docker compose cp api:/data/backup.db ./mailflow-$(date +%F).db
+```
+Back up `.env` too (especially `FERNET_KEY` and `LINK_SIGNING_SECRET`), and store it somewhere safe and separate.
+
+### Production behaviour
+- `/docs`, `/redoc` and `/openapi.json` are disabled.
+- When every AI provider fails, users get a `503` instead of a mock email.
+- HSTS and other security headers are sent.
+
+### Scaling limits
+This setup is designed for **one server and one API worker**. The email scheduler, campaign worker and rate limiter run inside the process; sends are claimed atomically, so a second worker can't double-send, but each worker would run its own scheduler. To grow beyond one server:
+- move to Postgres (`DATABASE_URL`, plus `psycopg[binary]`)
+- move rate limiting to Redis
+- adopt Alembic for schema changes; the built-in migration only adds columns
 
 ---
 

@@ -1,0 +1,39 @@
+# Production: docker compose up -d --build
+# Needs a server with ports 80/443 open and DNS for $DOMAIN pointing at it. Settings come from .env (see README).
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: sqlite:////data/mailflow.db
+      FRONTEND_URL: https://${DOMAIN:?set DOMAIN in .env}
+      PUBLIC_API_URL: https://${DOMAIN}
+      CORS_ORIGINS: https://${DOMAIN}
+      GOOGLE_REDIRECT_URI: https://${DOMAIN}/api/mailbox/google/callback
+    volumes:
+      - api-data:/data          # the SQLite database: back this up
+    expose:
+      - "8000"                  # reachable only by Caddy, not from the internet
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # HTTPS certificates
+      - caddy-config:/config
+
+volumes:
+  api-data:
+  caddy-data:
+  caddy-config:
