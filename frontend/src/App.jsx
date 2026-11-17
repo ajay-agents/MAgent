@@ -13,6 +13,7 @@ import Settings        from "./pages/Settings.jsx";
 import Campaigns       from "./pages/Campaigns.jsx";
 import ResetPassword   from "./pages/ResetPassword.jsx";
 import VerifyEmail     from "./pages/VerifyEmail.jsx";
+import { Privacy, Terms } from "./pages/Legal.jsx";
 import CampaignDetail  from "./pages/CampaignDetail.jsx";
 import AuthModal       from "./pages/AuthModal";
 import ProtectedRoute  from "./components/ProtectedRoute";
@@ -28,6 +29,8 @@ const App = () => {
         <Route path="/" element={<Homepage setAuthOpen={setOpen} />} />
         <Route path="/reset-password"  element={<ResetPassword />} />
         <Route path="/verify-email"    element={<VerifyEmail />} />
+        <Route path="/privacy"         element={<Privacy />} />
+        <Route path="/terms"           element={<Terms />} />
 
         <Route path="/dashboard"       element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/create-email"    element={<ProtectedRoute><CreateEmail /></ProtectedRoute>} />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import {
   FiMail,
@@ -309,7 +309,11 @@ ${darkMode ? "bg-[#151923] border-gray-800" : "bg-gray-50"}`}
             MailFlow AI
           </div>
 
-          <p className="text-gray-500">© 2026 MailFlow AI</p>
+          <p className="text-gray-500 flex gap-4">
+            <Link to="/privacy" className="hover:underline">Privacy</Link>
+            <Link to="/terms" className="hover:underline">Terms</Link>
+            <span>© 2026 MailFlow AI</span>
+          </p>
         </div>
       </footer>
     </div>

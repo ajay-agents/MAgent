@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FiX, FiMail, FiLock } from "react-icons/fi";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
@@ -123,6 +123,12 @@ export default function AuthModal({ isOpen, onClose }) {
             className={`w-full rounded-xl py-3 font-semibold text-white transition hover:scale-[1.02] disabled:opacity-60 ${darkMode ? "bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" : "bg-gray-900 hover:bg-black"}`}>
             {loading ? "Please wait..." : tab === "login" ? "Log in" : tab === "forgot" ? "Send reset link" : "Create Account"}
           </button>
+          {tab === "signup" && (
+            <p className={`text-xs text-center ${darkMode ? "text-gray-500" : "text-gray-500"}`}>
+              By creating an account you agree to the <Link to="/terms" onClick={onClose} className="underline">Terms</Link> and{" "}
+              <Link to="/privacy" onClick={onClose} className="underline">Privacy Policy</Link>.
+            </p>
+          )}
           {tab === "forgot" && (
             <button type="button" onClick={() => switchTab("login")} className={`w-full text-sm underline ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
               Back to log in
