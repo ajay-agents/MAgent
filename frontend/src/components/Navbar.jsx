@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { FiSearch, FiBell, FiMoon, FiSun, FiSend, FiClock, FiFileText, FiAlertCircle } from "react-icons/fi";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -33,34 +33,29 @@ const Navbar = () => {
   const billing = useBilling();
 
   const [showNotif, setShowNotif]       = useState(false);
-  const [notifs, setNotifs]             = useState([]);
-  const [unread, setUnread]             = useState(0);
   const bellRef                         = useRef(null);
 
   const [searchQuery, setSearchQuery]   = useState("");
-  const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch]     = useState(false);
   const [allEmails, setAllEmails]       = useState([]);
   const searchRef                       = useRef(null);
 
-  // Load all emails once for client-side search
+  // One fetch feeds both client-side search and the notifications dropdown; reloaded when the bell opens
+  const [reload, setReload] = useState(0);
   useEffect(() => {
-    api.get("/api/emails").then(setAllEmails).catch(() => {});
-  }, []);
+    api.get("/api/emails").then(setAllEmails).catch(() => {}); // navbar extras are best-effort
+  }, [reload]);
 
-  // Filter on every keystroke
-  useEffect(() => {
+  const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) { setSearchResults([]); setShowSearch(false); return; }
-    const matches = allEmails
+    if (!q) return [];
+    return allEmails
       .filter((e) =>
         e.subject?.toLowerCase().includes(q) ||
         e.recipient_name?.toLowerCase().includes(q) ||
         e.recipient_email?.toLowerCase().includes(q)
       )
       .slice(0, 8);
-    setSearchResults(matches);
-    setShowSearch(true);
   }, [searchQuery, allEmails]);
 
   // Close search dropdown on outside click
@@ -78,18 +73,8 @@ const Navbar = () => {
     navigate(STATUS_ROUTE[email.status] || "/dashboard");
   };
 
-  const fetchNotifs = useCallback(async () => {
-    try {
-      const emails = await api.get("/api/emails");
-      const recent = emails.slice(0, 8);
-      setNotifs(recent);
-      setUnread(emails.filter((e) => e.status === "pending").length);
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => {
-    fetchNotifs();
-  }, [fetchNotifs]);
+  const notifs = allEmails.slice(0, 8);
+  const unread = allEmails.filter((e) => e.status === "pending").length;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -99,7 +84,7 @@ const Navbar = () => {
   }, []);
 
   const toggleNotif = () => {
-    if (!showNotif) fetchNotifs();
+    if (!showNotif) setReload((n) => n + 1);
     setShowNotif((v) => !v);
   };
 
@@ -116,7 +101,7 @@ const Navbar = () => {
         <input
           type="text"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(!!e.target.value.trim()); }}
           onFocus={() => searchQuery.trim() && setShowSearch(true)}
           onKeyDown={(e) => {
             if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); }

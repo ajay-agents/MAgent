@@ -1,4 +1,3 @@
-import React from "react";
 import { NavLink } from "react-router-dom";
 
 import {
@@ -26,8 +25,6 @@ const Sidebar = () => {
     logout();
     navigate("/");
   };
-
-  const hasDraft = localStorage.getItem("hasDraft") === "true";
 
   return (
     <div
@@ -82,7 +79,6 @@ const Sidebar = () => {
           to="/drafts"
           icon={<FiFileText />}
           label="Drafts"
-          highlight={hasDraft}
         />
 
         <SideItem to="/scheduled-emails" icon={<FiClock />} label="Scheduled" />

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { FiPlus, FiSend, FiClock } from "react-icons/fi";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -14,23 +14,19 @@ export default function Dashboard() {
 
   const [stats, setStats] = useState({ generated: 0, sent: 0, scheduled: 0, failed: 0 });
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const all = await api.get("/api/emails");
-      setStats({
+  useEffect(() => {
+    const fetchStats = () => api.get("/api/emails")
+      .then((all) => setStats({
         generated: all.length,
         sent:      all.filter((e) => e.status === "sent").length,
         scheduled: all.filter((e) => e.status === "pending").length,
         failed:    all.filter((e) => e.status === "failed").length,
-      });
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => {
+      }))
+      .catch(() => {}); // stats stay at their last values
     fetchStats();
     window.addEventListener("focus", fetchStats);
     return () => window.removeEventListener("focus", fetchStats);
-  }, [fetchStats]);
+  }, []);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";

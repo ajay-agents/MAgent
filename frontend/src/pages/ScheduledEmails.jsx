@@ -23,15 +23,14 @@ export default function ScheduledEmails() {
 
   const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(""), 3000); };
 
-  const fetchEmails = () => {
-    setLoading(true);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
     api.get("/api/emails?status=pending")
       .then(setEmailList)
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { fetchEmails(); }, []);
+  }, [reload]);
 
   const handleCancel = async (id) => {
     try {
@@ -62,7 +61,7 @@ export default function ScheduledEmails() {
       await api.post(`/api/emails/${selectedEmail.id}/schedule`, { scheduled_at: scheduledAt });
       notify("Email rescheduled");
       setShowSchedule(false);
-      fetchEmails();
+      setReload((n) => n + 1);
     } catch (err) {
       notify(err.message);
     }
@@ -180,8 +179,14 @@ export default function ScheduledEmails() {
               <div><p className="text-sm text-gray-500">Subject</p><p className="font-medium">{selectedEmail.subject}</p></div>
               <div><p className="text-sm text-gray-500">Scheduled</p><p className="font-medium">{fmtDate(selectedEmail.scheduled_at)} at {fmtTime(selectedEmail.scheduled_at)}</p></div>
             </div>
-            <button onClick={() => setShowModal(false)}
-              className={`mt-6 w-full py-3 rounded-xl text-white font-medium ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900"}`}>Close</button>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => { handleCancel(selectedEmail.id); setShowModal(false); }}
+                className={`flex-1 py-3 rounded-xl border font-medium ${darkMode ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-100"}`}>
+                Unschedule (back to drafts)
+              </button>
+              <button onClick={() => setShowModal(false)}
+                className={`flex-1 py-3 rounded-xl text-white font-medium ${darkMode ? "bg-gradient-to-r from-indigo-500 to-purple-600" : "bg-gray-900"}`}>Close</button>
+            </div>
           </div>
         </div>
       )}

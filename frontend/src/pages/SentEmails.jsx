@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import { FiRefreshCw, FiMail, FiCheckCircle, FiXCircle, FiSearch } from "react-icons/fi";
@@ -14,19 +14,14 @@ export default function SentEmails() {
   const [tab, setTab]       = useState("All");
   const [search, setSearch] = useState("");
 
-  const fetchEmails = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [sent, failed] = await Promise.all([
-        api.get("/api/emails?status=sent"),
-        api.get("/api/emails?status=failed"),
-      ]);
-      setEmails([...sent, ...failed].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-    } catch (_) {}
-    finally { setLoading(false); }
-  }, []);
+  const [reload, setReload] = useState(0);
 
-  useEffect(() => { fetchEmails(); }, [fetchEmails]);
+  useEffect(() => {
+    Promise.all([api.get("/api/emails?status=sent"), api.get("/api/emails?status=failed")])
+      .then(([sent, failed]) => setEmails([...sent, ...failed].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))))
+      .catch(() => {}) // empty list; the page shows "no emails"
+      .finally(() => setLoading(false));
+  }, [reload]);
 
   const byTab     = tab === "All" ? emails : emails.filter((e) => e.status === tab.toLowerCase());
   const displayed = search.trim()
@@ -59,7 +54,7 @@ export default function SentEmails() {
                   <p className="text-gray-500 text-sm mt-1">Track delivered emails and monitor failed attempts.</p>
                 </div>
               </div>
-              <button onClick={fetchEmails}
+              <button onClick={() => setReload((n) => n + 1)}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border transition ${darkMode ? "bg-[#11141D] border-gray-700 text-gray-300 hover:bg-gray-800" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100"}`}>
                 <FiRefreshCw size={16} /> Refresh
               </button>

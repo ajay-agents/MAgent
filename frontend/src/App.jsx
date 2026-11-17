@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Homepage        from "./pages/Homepage.jsx";
@@ -8,7 +8,6 @@ import ScheduledEmails from "./pages/ScheduledEmails.jsx";
 import SentEmails      from "./pages/SentEmails.jsx";
 import DeletedEmails   from "./pages/DeletedEmails.jsx";
 import Drafts          from "./pages/Drafts.jsx";
-import EditEmail       from "./pages/EditEmail.jsx";
 import Settings        from "./pages/Settings.jsx";
 import Campaigns       from "./pages/Campaigns.jsx";
 import ResetPassword   from "./pages/ResetPassword.jsx";
@@ -41,7 +40,6 @@ const App = () => {
         <Route path="/settings"        element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/campaigns"       element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
         <Route path="/campaigns/:id"   element={<ProtectedRoute><CampaignDetail /></ProtectedRoute>} />
-        <Route path="/edit-email"      element={<ProtectedRoute><EditEmail /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   );

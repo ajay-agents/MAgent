@@ -18,15 +18,12 @@ const DeletedEmails = () => {
 
   const notify = (msg) => { setMessage(msg); setTimeout(() => setMessage(""), 2500); };
 
-  const fetchDeleted = () => {
-    setLoading(true);
+  useEffect(() => {
     api.get("/api/emails?status=deleted")
       .then(setEmailList)
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { fetchDeleted(); }, []);
+  }, []);
 
   const handleRestore = async (email) => {
     try {

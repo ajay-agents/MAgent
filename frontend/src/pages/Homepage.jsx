@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import {
   FiMail,
@@ -13,7 +12,6 @@ import {
 
 export default function Home({ setAuthOpen }) {
   const { darkMode, toggleTheme } = useTheme();
-  const navigate = useNavigate();
 
   return (
     <div
