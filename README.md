@@ -1,20 +1,34 @@
 # MailFlow AI
 
-An AI-powered email outreach agent. Generate personalized emails with OpenAI GPT-4o-mini, Gemini 2.0 Flash, or Groq (gpt-oss-120b), in fallback order, schedule them, and send automatically via Gmail SMTP — all from a React dashboard.
+An AI-powered email outreach SaaS. Write personalised emails with AI (OpenAI, Gemini or Groq), edit and refine them,
+send or schedule them from your own Gmail, and run **campaigns**: a CSV of contacts, one personalised email each, with
+automatic follow-ups in the same thread. It includes Free/Pro plans with usage limits, one-click unsubscribe and a
+do-not-contact list, email verification and password reset, and a one-command production deployment.
+
+## Features
+
+- **AI email builder:** six purposes (cold outreach, follow-up, networking, …), tone and length controls, a sender profile fed into every prompt, inline editing, and one-click refine (shorter, warmer, more direct, …)
+- **Gmail sending:** "Connect with Google" (OAuth, send-only permission) or a Gmail App Password; send now or schedule
+- **Campaigns:** CSV import, background AI writing, staggered sending, threaded follow-ups, mark replied, pause/resume
+- **Compliance:** unsubscribe link and one-click headers on every campaign email, a per-sender do-not-contact list, postal-address footer, and a per-user daily send cap under Gmail's limit
+- **Accounts:** email verification, password reset and change password
+- **Plans:** Free/Pro with atomic monthly AI-email metering; upgrades are manual until payments are added
+- **Production-ready:** startup config guards, rate limiting, crash-safe sending, Docker Compose + Caddy with automatic HTTPS, 109 tests
 
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Backend | FastAPI (Python 3.13) |
-| Database | SQLite + SQLAlchemy 2.x |
-| Auth | JWT (PyJWT) + bcrypt; Google OAuth for Gmail |
-| AI — Primary | OpenAI GPT-4o-mini |
-| AI — Fallback | Google Gemini 2.0 Flash, then Groq `openai/gpt-oss-120b` |
+| Backend | FastAPI, Python 3.13 (3.10+ required) |
+| Database | SQLite + SQLAlchemy 2.x (Postgres-ready via `DATABASE_URL`) |
+| Auth | JWT (PyJWT) + bcrypt; signed links for verification, password reset and unsubscribe |
+| AI | OpenAI GPT-4o-mini → Google Gemini 2.0 Flash → Groq `openai/gpt-oss-120b` (first configured wins, falls back on failure) |
 | Email sending | Gmail API (Google OAuth) or Gmail SMTP with an App Password |
-| Scheduling | APScheduler (background, 60 s poll) |
-| Encryption | Fernet (cryptography) for stored passwords |
+| System email | Any SMTP provider (verification and password-reset emails) |
+| Background jobs | APScheduler, in-process: send due emails every 60 s; campaign writing and follow-ups every 30 s |
+| Encryption | Fernet (cryptography) for stored Gmail App Passwords and Google tokens |
 | Frontend | React 19 + Vite 8 + Tailwind CSS v4 |
+| Deployment | Docker Compose: FastAPI + Caddy (static frontend, reverse proxy, automatic HTTPS) |
 
 ---
 
@@ -23,176 +37,113 @@ An AI-powered email outreach agent. Generate personalized emails with OpenAI GPT
 ```
 MAgent/
 ├── app/
-│   ├── main.py                  # FastAPI app, lifespan, CORS, router registration
-│   ├── config.py                # Settings loaded from .env (pydantic-settings)
-│   ├── db/
-│   │   └── session.py           # SQLAlchemy engine, session, Base
-│   ├── models/
-│   │   └── models.py            # User, ScheduledEmail, MailboxCredential
-│   ├── schemas/
-│   │   └── schemas.py           # Pydantic request/response models
+│   ├── main.py                  # FastAPI app, lifespan (migrations + scheduler), middleware, routers
+│   ├── config.py                # Settings from .env, with production safety checks
+│   ├── cli.py                   # Admin commands: set-plan, show-user
+│   ├── db/session.py            # SQLAlchemy engine (SQLite WAL), session, Base
+│   ├── models/models.py         # User, ScheduledEmail, MailboxCredential, SenderProfile, Campaign,
+│   │                            #   CampaignRecipient, UsageCounter, Suppression
+│   ├── schemas/schemas.py       # Pydantic request/response models (UTC datetimes, input limits)
 │   ├── api/routes/
-│   │   ├── auth.py              # /api/auth — signup, login, me
-│   │   ├── emails.py            # /api/emails — generate, list, schedule, delete
-│   │   └── mailbox.py           # /api/mailbox — Gmail credential CRUD
-│   ├── prompts/                 # Per-purpose prompt files (.txt)
-│   │   ├── cold_outreach.txt
-│   │   ├── follow_up.txt
-│   │   ├── job_application.txt
-│   │   ├── networking.txt
-│   │   ├── partnership.txt
-│   │   └── thank_you.txt
+│   │   ├── auth.py              # signup, login, me, verify email, forgot/reset/change password
+│   │   ├── emails.py            # generate, edit, regenerate/refine, schedule, send, trash/restore
+│   │   ├── campaigns.py         # campaigns: CSV import, generate, launch, pause/resume, recipients
+│   │   ├── mailbox.py           # Gmail connection: Google OAuth flow or App Password
+│   │   ├── profile.py           # sender profile
+│   │   ├── billing.py           # plan, usage and limits
+│   │   └── unsubscribe.py       # public /u/<token> pages + do-not-contact list API
+│   ├── prompts/                 # One prompt file per purpose (instruction + few-shot example)
 │   └── core/
-│       ├── security.py          # bcrypt hashing, JWT create/verify
-│       ├── openai_client.py     # Prompt loading + OpenAI / Gemini generation
-│       ├── encryption.py        # Fernet encrypt/decrypt for stored passwords
-│       ├── smtp_sender.py       # Gmail SMTP via smtplib (port 465, SSL)
-│       └── scheduler.py        # APScheduler — polls and fires pending emails
-├── frontend/                    # React + Vite frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── AuthModal.jsx        # Login / Signup modal
-│   │   │   ├── Dashboard.jsx        # Stats overview + quick actions
-│   │   │   ├── CreateEmail.jsx      # AI email builder + schedule/send
-│   │   │   ├── Drafts.jsx           # Browse and delete drafts
-│   │   │   ├── ScheduledEmails.jsx  # Manage pending emails
-│   │   │   ├── SentEmails.jsx       # Sent + failed history
-│   │   │   └── Settings.jsx         # Gmail credentials + logout
-│   │   ├── context/
-│   │   │   ├── AuthContext.jsx      # JWT storage, login/logout helpers
-│   │   │   └── ThemeContext.jsx     # Dark/light mode toggle
-│   │   ├── components/
-│   │   │   ├── ProtectedRoute.jsx   # Redirects unauthenticated users to /
-│   │   │   ├── Sidebar.jsx
-│   │   │   └── Navbar.jsx
-│   │   └── services/
-│   │       └── api.js               # Fetch wrapper with auto Bearer token
-│   └── .env                         # VITE_API_BASE_URL=http://localhost:8000
-├── mailflow.db                  # SQLite database (auto-created on first run)
-├── requirements.txt
-├── .env                         # Your secrets (not committed)
-├── .env.example                 # Template for .env
-└── start.bat                    # Windows launch shortcut
+│       ├── openai_client.py     # Prompt building, provider fallback, anti-fabrication rules
+│       ├── campaigns.py         # CSV parsing, background writer, launch, follow-ups, replies
+│       ├── delivery.py          # Atomic send claiming, daily cap, threading, compliance footer
+│       ├── scheduler.py         # APScheduler jobs
+│       ├── google_oauth.py      # OAuth + Gmail API sending
+│       ├── smtp_sender.py       # MIME building + Gmail SMTP
+│       ├── system_mail.py       # Transactional email (verification / reset)
+│       ├── unsubscribe.py       # Signed unsubscribe links, footer, suppression list
+│       ├── plans.py             # Plan limits and monthly usage metering
+│       ├── account_tokens.py    # Verification and password-reset tokens
+│       ├── rate_limit.py        # Per-IP sliding-window limiter
+│       ├── security.py          # Password hashing, JWT, auth dependencies
+│       └── encryption.py        # Fernet helpers
+├── tests/                       # pytest suite (fake AI and Gmail, throwaway database)
+├── frontend/
+│   ├── Dockerfile               # Builds the app, serves it with Caddy
+│   └── src/
+│       ├── pages/               # Homepage, Dashboard, CreateEmail, Campaigns, CampaignDetail, Drafts,
+│       │                        #   ScheduledEmails, SentEmails, DeletedEmails, Settings, AuthModal,
+│       │                        #   VerifyEmail, ResetPassword, Legal (privacy + terms)
+│       ├── components/          # Sidebar, Navbar, VerifyBanner, UpgradeModal, CampaignBits, ProtectedRoute
+│       ├── context/             # AuthContext, ThemeContext
+│       └── services/            # api.js (fetch wrapper), billing.js (shared plan/usage fetch)
+├── deploy/Caddyfile             # Production routing + HTTPS
+├── docker-compose.yml           # Production stack
+├── Dockerfile                   # API image
+├── requirements.txt / requirements-dev.txt
+├── .env.example                 # Every setting, documented
+└── start.bat                    # Windows shortcut to start the backend
 ```
 
 ---
 
-## Backend Setup
+## Local Development
 
-### 1. Create and activate virtual environment
+### 1. Backend
 
+Requires **Python 3.10 or newer**; 3.13 is recommended. On macOS with Homebrew: `brew install python@3.13`.
+
+**macOS / Linux:**
+```bash
+python3.13 -m venv venv
+venv/bin/pip install -r requirements-dev.txt
+cp .env.example .env            # then edit it (see below)
+venv/bin/python -m uvicorn app.main:app --reload --port 8000
+```
+
+**Windows (PowerShell):**
 ```powershell
 python -m venv venv
-.\venv\Scripts\Activate.ps1
+.\venv\Scripts\pip install -r requirements-dev.txt
+copy .env.example .env
+.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000   # or .\start.bat
 ```
+If PowerShell refuses to run scripts: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.
 
-If you get an execution policy error:
+Backend: `http://localhost:8000` · API docs: `http://localhost:8000/docs` (development only)
 
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-### 2. Install dependencies
-
-```powershell
-pip install -r requirements.txt
-```
-
-### 3. Configure environment variables
-
-Copy `.env.example` to `.env` and fill in your values. **Don't put comments on the same line as a value**; they become part of the value.
-
-```env
-ENVIRONMENT=development
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-GROQ_API_KEY=gsk_your-groq-key
-JWT_SECRET=<random string, 32+ chars>
-FERNET_KEY=<generated key>
-CORS_ORIGINS=http://localhost:5173
-```
-
-Generate the secrets:
+### 2. Frontend
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"                               # JWT_SECRET
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # FERNET_KEY
-```
-
-The app refuses to start if `FERNET_KEY` is not a valid key. Changing `FERNET_KEY` later makes saved Gmail passwords unreadable, so users would need to re-enter them.
-
-| Variable | Where to get it |
-|---|---|
-| `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| `GEMINI_API_KEY` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) — free tier, used as fallback |
-| `FERNET_KEY` | Generate with command above |
-| `GROQ_API_KEY` | [console.groq.com/keys](https://console.groq.com/keys) |
-| `JWT_SECRET` | Random string, 32+ characters |
-| `ENVIRONMENT` | `production` enables startup safety checks (see Production Deployment) |
-| `CORS_ORIGINS` | Comma-separated frontend URLs allowed to call the API |
-| `AI_TIMEOUT_SECONDS` | Optional, default 45 |
-| `RATE_LIMIT_AUTH_PER_MINUTE` / `RATE_LIMIT_GENERATE_PER_MINUTE` | Optional per-IP limits, default 10 / 20 |
-
-### 4. Start the backend
-
-```powershell
-.\start.bat
-```
-
-Or directly:
-
-```powershell
-.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
-```
-
-Backend: `http://127.0.0.1:8000`  
-Swagger UI: `http://127.0.0.1:8000/docs`
-
----
-
-## Frontend Setup
-
-### 1. Install dependencies
-
-```powershell
 cd frontend
 npm install
-```
-
-### 2. Configure API URL
-
-`frontend/.env` is already set to point at the local backend:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000
-```
-
-Change this if your backend runs on a different port or host.
-
-### 3. Start the dev server
-
-```powershell
 npm run dev
 ```
+Frontend: `http://localhost:5173`. It calls the backend at `http://localhost:8000` by default. To point it elsewhere, set `VITE_API_BASE_URL` in `frontend/.env.local`. Production builds use the same origin.
 
-Frontend: `http://localhost:5173`
+### 3. Configure `.env`
 
----
+`.env.example` lists and explains every setting. **Don't put comments on the same line as a value**; they become part of the value. For local development you only need:
 
-## Running the Full Stack
+| Variable | Notes |
+|---|---|
+| `GROQ_API_KEY` (or `OPENAI_API_KEY` / `GEMINI_API_KEY`) | At least one AI key. With none, the app returns a canned mock email (development only). Keys: [console.groq.com](https://console.groq.com/keys), [platform.openai.com](https://platform.openai.com/api-keys), [aistudio.google.com](https://aistudio.google.com/app/apikey) |
+| `JWT_SECRET`, `LINK_SIGNING_SECRET` | Random strings: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `FERNET_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Changing it later makes saved Gmail credentials unreadable |
 
-Open two terminals:
+Everything else has working development defaults:
+- Without `SMTP_*`, verification and password-reset links are printed in the backend log.
+- Without `GOOGLE_CLIENT_*`, Settings offers only the App Password option.
 
-```powershell
-# Terminal 1 — backend
-.\venv\Scripts\python.exe -m uvicorn app.main:app --reload
+Optional settings include `DAILY_SEND_LIMIT`, `SUPPORT_EMAIL`, `AI_TIMEOUT_SECONDS` and `RATE_LIMIT_*`.
 
-# Terminal 2 — frontend
-cd frontend
-npm run dev
+### 4. Useful commands
+
+```bash
+venv/bin/python -m pytest                                      # run the tests
+venv/bin/python -m app.cli set-plan you@example.com pro        # give an account Pro
+cd frontend && npx eslint . && npm run build                   # lint and build the frontend
 ```
-
-Then open `http://localhost:5173`.
 
 ---
 
@@ -200,13 +151,17 @@ Then open `http://localhost:5173`.
 
 | Page | Route | What it does |
 |---|---|---|
-| Landing | `/` | Marketing page with login/signup modal |
-| Dashboard | `/dashboard` | Live stats (generated / sent / scheduled / failed) |
-| Create Email | `/create-email` | AI builder — generate, schedule, or send now |
-| Drafts | `/drafts` | Browse drafts, view full email, delete |
-| Scheduled | `/scheduled-emails` | View pending queue, cancel or reschedule |
-| Sent | `/sent-emails` | History of sent and failed emails |
-| Settings | `/settings` | Gmail credentials, dark mode, logout |
+| Landing | `/` | Marketing page, login/signup modal (with forgot password) |
+| Dashboard | `/dashboard` | Stats: generated / sent / scheduled / failed |
+| Create Email | `/create-email` | AI builder: generate, edit inline, refine, regenerate, schedule or send |
+| Campaigns | `/campaigns`, `/campaigns/:id` | Create a campaign, import a CSV, write, review and edit, launch, follow-ups, mark replied |
+| Drafts | `/drafts` | One-off drafts: view, edit, send, delete |
+| Scheduled | `/scheduled-emails` | Pending emails: view, reschedule, unschedule, delete |
+| Sent | `/sent-emails` | Sent and failed history, with failure reasons |
+| Deleted | `/deleted-emails` | Trash: restore or delete permanently |
+| Settings | `/settings` | Plan & usage, sender profile, do-not-contact list, Gmail connection, dark mode, change password |
+| Verify email / Reset password | `/verify-email`, `/reset-password` | Targets of the emailed links |
+| Privacy / Terms | `/privacy`, `/terms` | Draft legal pages (fill in placeholders in `Legal.jsx`) |
 
 ---
 
@@ -216,9 +171,12 @@ Then open `http://localhost:5173`.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/api/auth/signup` | — | Register a new user |
+| POST | `/api/auth/signup` | — | Register; sends a verification email |
 | POST | `/api/auth/login` | — | Login, returns JWT token |
-| GET | `/api/auth/me` | JWT | Get current user info |
+| GET | `/api/auth/me` | JWT | Current user, including `email_verified` |
+| POST | `/api/auth/verify-email`, `/resend-verification`, `/forgot-password`, `/reset-password`, `/change-password` | varies | See [Accounts](#accounts-verification--passwords) |
+
+Rate limits: 10 auth requests and 20 AI generations per minute per IP; endpoints that send email are limited to 5 per minute.
 
 All protected endpoints require: `Authorization: Bearer <token>`
 
@@ -274,13 +232,73 @@ Either way, the secret (refresh token or App Password) is Fernet-encrypted at re
 | Method | Path | Description |
 |---|---|---|
 | POST | `/api/emails/generate` | Generate with AI — saves as draft |
-| GET | `/api/emails` | List all emails (`?status=draft\|pending\|sent\|failed`) |
+| GET | `/api/emails` | List emails. `?status=draft\|pending\|sent\|failed\|deleted`, `include_campaigns=false` hides campaign emails, `limit`/`offset` paginate |
 | GET | `/api/emails/{id}` | Full detail including email body |
 | PATCH | `/api/emails/{id}` | Edit `subject` and/or `body` (draft, failed or pending) |
 | POST | `/api/emails/{id}/regenerate` | `{}` = fresh version from the original inputs; `{"refinement": "shorter\|longer\|warmer\|more_direct\|more_formal", "instruction": "..."}` = AI revises the current draft, including manual edits. Updates the same email; token and cost totals accumulate |
 | POST | `/api/emails/{id}/schedule` | Schedule a draft for a future time |
 | DELETE | `/api/emails/{id}/schedule` | Cancel schedule — moves back to draft |
-| DELETE | `/api/emails/{id}` | Delete a draft or failed email |
+| POST | `/api/emails/{id}/send` | Send now. 400 if no Gmail is connected or the recipient unsubscribed; 429 at the daily cap |
+| DELETE | `/api/emails/{id}` | Move to trash (cancels a pending schedule) |
+| POST | `/api/emails/{id}/restore` | Restore from trash as a draft |
+| DELETE | `/api/emails/{id}/permanent` | Delete for good |
+
+Generating, rewriting, scheduling and sending require a verified email (403 otherwise). AI calls count toward the plan's monthly quota (402 when it runs out).
+
+#### Generate request body
+
+```json
+{
+  "purpose": "cold_outreach",
+  "tone": "professional",
+  "length": "medium",
+  "sender_name": "Alice",
+  "recipient_name": "Bob",
+  "recipient_email": "bob@example.com",
+  "context": "We met at DevConf 2025"
+}
+```
+
+**`purpose`** — `cold_outreach` | `follow_up` | `job_application` | `networking` | `partnership` | `thank_you`  
+**`tone`** — `professional` | `friendly` | `formal` | `casual` | `persuasive`  
+**`length`** — `short` (< 100 words) | `medium` (150–200 words) | `long` (250–350 words)
+
+#### Generate response
+
+```json
+{
+  "id": 1,
+  "subject": "Quick question about your onboarding flow",
+  "body": "Hi Bob, ...",
+  "ai_model": "gpt-4o-mini",
+  "prompt_tokens": 412,
+  "completion_tokens": 187,
+  "total_tokens": 599,
+  "estimated_cost_usd": 0.00018
+}
+```
+
+The `id` is used for all subsequent operations.
+
+#### Schedule request body
+
+```json
+{ "scheduled_at": "2026-07-15T09:00:00Z" }
+```
+
+Send a timezone-aware time (e.g. `toISOString()`); a naive time is treated as UTC. Times in the past or more than a year ahead are rejected. All datetimes in responses are UTC with a `Z` suffix.
+
+The scheduler polls every 60 seconds and sends any email where `scheduled_at <= now (UTC)`. Each email is claimed atomically before sending, so it can't be sent twice even if "Send now" races the scheduler.
+
+#### Email status lifecycle
+
+```
+draft  →  pending  →  sending  →  sent
+                         ↓
+                       failed   (error_message explains why; can be rescheduled or re-sent)
+```
+
+If the server stops mid-send, emails left in `sending` are marked `failed` at startup instead of being resent. Check the Gmail Sent folder before retrying them.
 
 ### Campaigns
 
@@ -376,64 +394,9 @@ A payment integration (Stripe or Razorpay) only needs to set `User.plan` from it
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/profile` | Current profile (all fields `null` if not set up) |
-| PUT | `/api/profile` | Save `full_name`, `role`, `company`, `about`, `signature`. Replaces the whole profile; blank fields are cleared |
+| PUT | `/api/profile` | Save `full_name`, `role`, `company`, `about`, `signature`, `postal_address`. Replaces the whole profile; blank fields are cleared |
 
 Every generation and refinement includes the profile in the prompt. The `about` field is the main guard against invented claims, because it gives the AI real facts about what the sender offers.
-
-#### Generate request body
-
-```json
-{
-  "purpose": "cold_outreach",
-  "tone": "professional",
-  "length": "medium",
-  "sender_name": "Alice",
-  "recipient_name": "Bob",
-  "recipient_email": "bob@example.com",
-  "context": "We met at DevConf 2025"
-}
-```
-
-**`purpose`** — `cold_outreach` | `follow_up` | `job_application` | `networking` | `partnership` | `thank_you`  
-**`tone`** — `professional` | `friendly` | `formal` | `casual` | `persuasive`  
-**`length`** — `short` (< 100 words) | `medium` (150–200 words) | `long` (250–350 words)
-
-#### Generate response
-
-```json
-{
-  "id": 1,
-  "subject": "Quick question about your onboarding flow",
-  "body": "Hi Bob, ...",
-  "ai_model": "gpt-4o-mini",
-  "prompt_tokens": 412,
-  "completion_tokens": 187,
-  "total_tokens": 599,
-  "estimated_cost_usd": 0.00018
-}
-```
-
-The `id` is used for all subsequent operations.
-
-#### Schedule request body
-
-```json
-{ "scheduled_at": "2026-07-15T09:00:00Z" }
-```
-
-Send a timezone-aware time (e.g. `toISOString()`); a naive time is treated as UTC. Times in the past or more than a year ahead are rejected. All datetimes in responses are UTC with a `Z` suffix.
-
-The scheduler polls every 60 seconds and sends any email where `scheduled_at <= now (UTC)`. Each email is claimed atomically before sending, so it can't be sent twice even if "Send now" races the scheduler.
-
-#### Email status lifecycle
-
-```
-draft  →  pending  →  sending  →  sent
-                         ↓
-                       failed   (error_message explains why; can be rescheduled or re-sent)
-```
-
-If the server stops mid-send, emails left in `sending` are marked `failed` at startup instead of being resent. Check the Gmail Sent folder before retrying them.
 
 ---
 
@@ -447,6 +410,9 @@ If every provider fails, development mode returns a canned `mock-test` email. Pr
 |---|---|---|
 | GPT-4o-mini | $0.150 / 1M tokens | $0.600 / 1M tokens |
 | Gemini 2.0 Flash | $0.10 / 1M tokens | $0.40 / 1M tokens |
+| Groq `openai/gpt-oss-120b` | Free tier: 8,000 tokens/min (~5 emails/min) shared by all users | Paid tiers available |
+
+Groq runs with low reasoning effort (about 1,500 tokens per email). Every call has a timeout (`AI_TIMEOUT_SECONDS`, default 45 s). Campaign writing never falls back to the mock email: a rate-limited recipient stays queued and is retried.
 
 
 ---
@@ -519,11 +485,13 @@ This setup is designed for **one server and one API worker**. The email schedule
 
 ---
 
-## Development Phases
+## Roadmap
 
-| Phase | Deliverable | Status |
-|---|---|---|
-| Week 1 | FastAPI + Auth + AI email generation + token tracking | ✅ Complete |
-| Week 2 | Gmail SMTP + APScheduler + Gemini fallback + Fernet encryption | ✅ Complete |
-| Week 3 | React + Vite frontend — full dashboard with live API integration | ✅ Complete |
-| Week 4 | Deploy + first real users | 🔜 Next |
+| Status | Item |
+|---|---|
+| ✅ Done | Auth, AI generation with provider fallback, Gmail sending and scheduling, React dashboard |
+| ✅ Done | Production hardening, editing and refine, sender profile, Connect with Google |
+| ✅ Done | Campaigns with threaded follow-ups, Free/Pro plans, unsubscribe and do-not-contact |
+| ✅ Done | Email verification, password reset, daily send cap, legal page drafts, Docker + Caddy deployment |
+| 🔜 Next | First production deploy, Google OAuth verification, real-send test |
+| Later | Online payments (Stripe or Razorpay), self-serve account deletion, automatic reply and bounce detection (needs Google's restricted `gmail.readonly` scope), analytics, Postgres + Redis for multiple servers |
